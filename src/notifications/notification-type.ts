@@ -1,0 +1,7 @@
+export enum NotificationType {
+  PRICING_READY = 'PRICING_READY',
+  PRICING_ACCEPTED = 'PRICING_ACCEPTED',
+  FILING_IN_REVIEW = 'FILING_IN_REVIEW',
+  FILING_COMPLETED = 'FILING_COMPLETED',
+  // يمكن إضافة المزيد من الأنواع هنا
+}

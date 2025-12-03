@@ -1,0 +1,6 @@
+{
+  "hello": "Hello",
+  "auth": {
+    "invalid_credentials": "Invalid credentials"
+  }
+}

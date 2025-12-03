@@ -1,0 +1,73 @@
+services:
+  db:
+    image: postgres:15
+    container_name: swisstax-postgress
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mysecretpassword}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-swisstax}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  clamav:
+    image: clamav/clamav:latest
+    container_name: swisstax-clamav
+    ports:
+      - "4000:3310"   
+    restart: unless-stopped
+    healthcheck:
+     test: ["CMD", "nc", "-z", "localhost", "3310"]
+     interval: 10s
+     timeout: 5s
+     retries: 30
+  minio:
+    image: minio/minio
+    container_name: swisstax-minio
+    ports:
+      - "9000:9000"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data
+
+  adminer:
+    image: adminer
+    container_name: swisstax-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: swisstax-app
+    env_file:
+      - .env
+    environment:
+      # override DATABASE_URL to use internal compose network when running in compose
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@db:5432/${POSTGRES_DB:-swisstax}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+      - minio
+      - clamav
+    volumes:
+      - ./:/usr/src/app
+      - /usr/src/app/node_modules # optional: enable for local dev hot reload
+    command: ["npm", "run", "start:dev", "--", "--host", "0.0.0.0"]
+    # In production you wouldn't mount source nor use start:dev
+
+volumes:
+  db-data:
