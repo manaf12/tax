@@ -6,11 +6,13 @@ import { UsersModule } from 'src/users/user.module'; // تأكد من اسم ا�
 import { PricingModule } from 'src/pricing/pricing.module';
 import { OrdersController } from './orders.controller';
 import { Pricing } from 'src/pricing/pricing.entity';
+import { FilesModule } from 'src/files/files.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([TaxDeclaration, Pricing]),
     UsersModule,
+    forwardRef(() => FilesModule),
     forwardRef(() => PricingModule),
   ],
   providers: [OrdersService],

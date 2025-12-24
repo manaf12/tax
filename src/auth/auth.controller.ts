@@ -129,22 +129,15 @@ export class AuthController {
   @UseGuards(AuthGuard('jwt'))
   @Get('me')
   async getMe(@Req() req: Request) {
-    console.log('--- Inside getMe ---');
-
-    // هل req.user موجود؟
-    console.log('req.user:', req.user);
-
     if (!req.user || !req.user.sub) {
       console.error('User or user.sub is missing from request!');
       throw new UnauthorizedException('Invalid token payload');
     }
 
     const userId = req.user.sub;
-    console.log('User ID from token:', userId);
 
     try {
       const user = await this.usersService.findOneById(userId);
-      console.log('User found in DB:', user);
 
       if (!user) {
         throw new UnauthorizedException('User not found in DB');
@@ -160,14 +153,13 @@ export class AuthController {
           streetAddress: user.profile?.streetAddress,
           postalCode: user.profile?.postalCode,
           city: user.profile?.city,
+          roles: user.roles, // <-- This is the fix
         },
       };
 
-      console.log('--- Successfully returning user data ---');
       return userResponse;
     } catch (error) {
       console.error('!!! ERROR inside getMe try-catch block !!!', error);
-      // أعد رمي الخطأ ليتم التعامل معه بواسطة NestJS
       throw error;
     }
   }

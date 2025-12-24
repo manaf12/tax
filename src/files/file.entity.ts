@@ -18,6 +18,9 @@ export class File {
   @Column()
   storagePath: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  documentType: string;
+
   @Column()
   mimetype: string;
   @Column('bigint')
@@ -25,7 +28,10 @@ export class File {
 
   @CreateDateColumn()
   uploadedAt: Date;
-
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
   @ManyToOne(() => TaxDeclaration, (declaration) => declaration.files)
   declaration: TaxDeclaration;
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  meta: Record<string, any>;
 }

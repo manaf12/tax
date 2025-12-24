@@ -12,6 +12,7 @@ import {
   NotFoundException,
   BadRequestException,
   UploadedFiles,
+  Body,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { FilesService } from './files.service';
@@ -36,7 +37,7 @@ export class FilesController {
         cb(null, true);
       },
       limits: {
-        fileSize: 1 * 1024 * 1024, // 3dlon 3la hsab shu bytlob hon msahet l file
+        fileSize: 1 * 1024 * 1024,
       },
     }),
   )
@@ -44,18 +45,28 @@ export class FilesController {
     @Param('declarationId') declarationId: string,
     @UploadedFile() file: MulterFile,
     @User('sub') userId: string,
+    @Body('documentType') documentType: string,
+    @Body('deliveredForStep') deliveredForStep?: string,
   ): Promise<File> {
     if (!file) {
       throw new NotFoundException('File not provided in the request.');
     }
-    return this.filesService.uploadFile(userId, declarationId, file);
+    return this.filesService.uploadFile(
+      userId,
+      declarationId,
+      file,
+      documentType,
+      false,
+      deliveredForStep,
+    );
   }
 
   @Get(':fileId/url')
   async getFileUrl(
     @Param('fileId', ParseUUIDPipe) fileId: string,
-  ): Promise<{ url: string }> {
-    const url = await this.filesService.getFileUrl(fileId);
+    @User('sub') userId: string,
+  ) {
+    const url = await this.filesService.getFileUrl(fileId, userId);
     return { url };
   }
   @Post(':declarationId/upload-multiple')
@@ -76,7 +87,13 @@ export class FilesController {
     @Param('declarationId') declarationId: string,
     @UploadedFiles() files: MulterFile[],
     @User('sub') userId: string,
+    @Body('documentType') documentType: string,
   ) {
-    return this.filesService.uploadMultipleFiles(userId, declarationId, files);
+    return this.filesService.uploadMultipleFiles(
+      userId,
+      declarationId,
+      files,
+      documentType,
+    );
   }
 }

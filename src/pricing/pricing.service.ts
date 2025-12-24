@@ -68,18 +68,18 @@ export class PricingService {
    * @param offer العرض المختار (Standard, Premium, Confort)
    * @returns السعر النهائي والتفاصيل
    */
-  private calculatePrice(
+  calculatePrice(
     questionnaireData: Record<string, any>,
-    offer: OfferType, // تم إضافة offer
+    offer: OfferType,
   ): {
     basePrice: number;
-    surcharges: Record<string, number | string>; // تم تعديل النوع ليشمل string
+    surcharges: Record<string, number | string>;
     finalPrice: number;
   } {
-    let variablePrice = 0; // السعر المتغير بناءً على التعقيد
+    let variablePrice = 0;
     const surcharges: Record<string, number | string> = {};
 
-    // 1. حساب السعر المتغير (منطقك الحالي)
+    // --------- 1. حساب السعر المتغير ---------
     const BASE_FEE = 50;
     variablePrice += BASE_FEE;
     surcharges.baseFee = BASE_FEE;
@@ -131,22 +131,34 @@ export class PricingService {
       }
     }
 
-    // 2. تطبيق منطق العرض
-    const offerFixedPrice = OFFER_PRICES[offer].fixedPrice;
+    // --------- 2. تطبيق المعادلة لكل عرض ---------
+    const standardPrice = variablePrice;
+    const premiumPrice = standardPrice + 120;
+    const confortPrice = premiumPrice * 2;
 
-    // السعر النهائي هو الأقصى بين السعر المتغير والسعر الثابت للعرض
-    const finalPrice = Math.max(variablePrice, offerFixedPrice);
+    let finalPrice = 0;
+    switch (offer) {
+      case OfferType.STANDARD:
+        finalPrice = standardPrice;
+        break;
+      case OfferType.PREMIUM:
+        finalPrice = premiumPrice;
+        break;
+      case OfferType.CONFORT:
+        finalPrice = confortPrice;
+        break;
+    }
 
-    // إضافة تفاصيل العرض إلى Surcharges للشفافية
-    surcharges.offerFixedPrice = offerFixedPrice;
+    // --------- 3. إضافة التفاصيل ---------
+    surcharges.standardPrice = standardPrice;
+    surcharges.premiumPrice = premiumPrice;
+    surcharges.confortPrice = confortPrice;
     surcharges.variablePrice = variablePrice;
-    surcharges.appliedPriceSource =
-      finalPrice === offerFixedPrice ? 'Offer Fixed' : 'Variable';
+    surcharges.appliedPriceSource = 'Variable';
     surcharges.offerType = offer;
 
     return { basePrice: variablePrice, surcharges, finalPrice };
   }
-
   /**
    * @param userId معرف المستخدم
    * @param declarationId معرف الطلب
@@ -249,33 +261,35 @@ export class PricingService {
   ): Promise<TaxDeclaration> {
     const pricing = await this.pricingRepository.findOne({
       where: { id: pricingId },
-      relations: ['questionnaireResponse'],
+      relations: ['questionnaireResponse', 'declaration'],
     });
-    if (!pricing) throw new NotFoundException('Pricing not found.');
-    if (pricing.status !== PricingStatus.CALCULATED)
-      throw new BadRequestException('Invalid pricing status');
 
-    // create declaration
-    const declaration = await this.orderService.createDeclarationFromPricing(
-      pricingId,
-      userId,
-    );
-
-    // نسخ بيانات الاستبيان مباشرة
-    if (pricing.questionnaireResponse) {
-      declaration.questionnaireSnapshot = pricing.questionnaireResponse.data;
-      declaration.offer = pricing.questionnaireResponse.data.offer;
-
-      // حفظ الـ TaxDeclaration مباشرة
-      await this.orderService.declarationsRepository.save(declaration);
+    if (!pricing) {
+      throw new NotFoundException('Pricing not found.');
     }
 
-    // update pricing status
+    // 🛡️ Idempotency & prevent double creation
+    if (pricing.status === PricingStatus.ACCEPTED && pricing.declaration) {
+      return pricing.declaration;
+    }
+
+    if (pricing.status !== PricingStatus.CALCULATED) {
+      throw new BadRequestException('Invalid pricing status');
+    }
+
+    // ✅ Only use the existing declaration
+    const declaration = pricing.declaration!;
+    if (!declaration) {
+      throw new BadRequestException(
+        'No declaration associated with this pricing.',
+      );
+    }
+
+    // Update pricing status
     pricing.status = PricingStatus.ACCEPTED;
-    pricing.declaration = declaration;
     await this.pricingRepository.save(pricing);
 
-    // إرسال إشعار
+    // 🔔 Send notification
     await this.notificationsService.sendDeclarationNotification(
       declaration,
       NotificationType.PRICING_ACCEPTED,
@@ -284,7 +298,6 @@ export class PricingService {
 
     return declaration;
   }
-
   /**
    * @param declarationId معرف الطلب
    * @returns كيان التسعيرة
@@ -444,19 +457,39 @@ export class PricingService {
   ): Promise<{ standard: number; premium: number; confort: number }> {
     const response =
       await this.questionnaireService.getResponseById(questionnaireId);
-    if (!response) {
-      throw new NotFoundException('Questionnaire not found.');
-    }
+    if (!response) throw new NotFoundException('Questionnaire not found.');
 
-    const prices = this.calculateAllOffers(response.data);
+    const snapshot = response.data || {};
 
-    // يمكنك هنا حفظ هذه الأسعار في كيان Pricing إذا أردت، أو إعادتها مباشرة
-    // للتبسيط، سنعيدها مباشرة
+    // Normalize snapshot
+    const normalized = {
+      isMarried: snapshot.maritalStatus === 'married',
+      numKids: Number(snapshot.childrenCount ?? 0),
+      numIncomeSources: Number(snapshot.incomeSources ?? 0),
+      numSecurities: Number(snapshot.wealthStatements ?? 0),
+      numRealEstate: Number(snapshot.properties ?? 0),
+      firstTimeDeclaredCount: Number(snapshot.newProperties ?? 0),
+    };
 
+    // Step 1: Calculate variable price (same as before)
+    let variablePrice = 50; // base
+    if (normalized.isMarried) variablePrice += 30;
+    variablePrice += normalized.numKids * 10;
+    variablePrice += normalized.numIncomeSources * 10;
+    variablePrice += normalized.numSecurities * 10;
+    variablePrice += normalized.numRealEstate * 80;
+    variablePrice += normalized.firstTimeDeclaredCount * 60;
+
+    // Step 2: Apply your offer formulas
+    const standardPrice = variablePrice;
+    const premiumPrice = standardPrice + 120;
+    const confortPrice = premiumPrice * 2;
+
+    // Step 3: Return
     return {
-      standard: prices.standard,
-      premium: prices.premium,
-      confort: prices.confort,
+      standard: standardPrice,
+      premium: premiumPrice,
+      confort: confortPrice,
     };
   }
 }

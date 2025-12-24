@@ -12,6 +12,7 @@ import { ClientProfile } from '../users/client-profile.entity';
 import { File } from '../files/file.entity';
 import { Pricing } from '../pricing/pricing.entity';
 import { Payment } from 'src/payment/payment.entity';
+import { Step } from '../types/steps';
 
 export enum DeclarationStatus {
   DRAFT = 'DRAFT', // مسودة (الحالة الأولية)
@@ -38,20 +39,11 @@ export class TaxDeclaration {
   @Column({ type: 'enum', enum: OfferType, nullable: true })
   offer: OfferType;
   @Column({ type: 'jsonb', default: () => "'{}'" })
-  steps: {
-    documentsUploaded?: { status: 'PENDING' | 'DONE'; files?: string[] };
-    documentsReviewed?: {
-      status: 'PENDING' | 'IN_PROGRESS' | 'DONE';
-      reviewerId?: string;
-      note?: string;
-    };
-    taxPreparation?: { status: 'PENDING' | 'IN_PROGRESS' | 'DONE' };
-    adminUploads?: { status: 'PENDING' | 'DONE'; files?: string[] };
-    invoice?: {
-      status: 'PENDING' | 'GENERATED' | 'READY';
-      invoiceFileId?: string;
-    };
-  };
+  steps: Step[];
+
+  @Column({ type: 'int', nullable: true })
+  currentStep?: number;
+
   @Column({
     type: 'enum',
     enum: DeclarationStatus,

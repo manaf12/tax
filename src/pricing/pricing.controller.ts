@@ -38,20 +38,20 @@ class CalculateDto {
 export class PricingController {
   constructor(private readonly pricingService: PricingService) {}
 
-  @Post(':declarationId/calculate')
-  async calculate(
-    @User('sub') userId: string,
-    @Param('declarationId') declarationId: string,
-  ): Promise<Pricing> {
-    const pricing = await this.pricingService.calculatePricing(
-      userId,
-      declarationId,
-    );
-    if (!pricing) {
-      throw new NotFoundException('Pricing could not be calculated.');
-    }
-    return pricing;
-  }
+  // @Post(':declarationId/calculate')
+  // async calculate(
+  //   @User('sub') userId: string,
+  //   @Param('declarationId') declarationId: string,
+  // ): Promise<Pricing> {
+  //   const pricing = await this.pricingService.calculatePricing(
+  //     userId,
+  //     declarationId,
+  //   );
+  //   if (!pricing) {
+  //     throw new NotFoundException('Pricing could not be calculated.');
+  //   }
+  //   return pricing;
+  // }
 
   // ملاحظة: الآن دالة accept تُعيد TaxDeclaration لأن قبول السعر ينشئ الطلب
   @Post(':pricingId/accept')

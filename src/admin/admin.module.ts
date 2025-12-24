@@ -1,5 +1,5 @@
 import { OrdersModule } from './../orders/orders.module';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
@@ -11,7 +11,7 @@ import { FilesModule } from 'src/files/files.module';
   imports: [
     TypeOrmModule.forFeature([TaxDeclaration]),
     NotificationsModule,
-    OrdersModule,
+    forwardRef(() => OrdersModule),
     FilesModule,
   ],
   providers: [AdminService],

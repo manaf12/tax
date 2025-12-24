@@ -1,5 +1,10 @@
 // types/step.ts
-export type StepStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELED';
+export enum StepStatus {
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  DONE = 'DONE',
+  CANCELED = 'CANCELED',
+}
 
 export interface Step {
   id: string; // مثال: 'documentsPreparation'

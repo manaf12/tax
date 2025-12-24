@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
+
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
@@ -19,6 +21,9 @@ import {
   TaxDeclaration,
   OfferType,
 } from 'src/orders/tax-declaration.entity';
+import { PricingService } from 'src/pricing/pricing.service';
+import { PricingStatus } from 'src/pricing/pricing-status.enum';
+import { ClientProfile } from 'src/users/client-profile.entity';
 
 @Injectable()
 export class QuestionnaireService {
@@ -32,10 +37,11 @@ export class QuestionnaireService {
     @Inject(forwardRef(() => OrdersService))
     private ordersService: OrdersService,
     private usersService: UsersService,
+    @Inject(forwardRef(() => PricingService)) // <--- التعديل المقترح
+    private readonly pricingService: PricingService,
   ) {}
 
   /**
-   * يبدأ استبياناً جديداً لمستخدم (بدون إنشاء declaration أولاً)
    * @param userId
    */
   async startQuestionnaire(userId: string): Promise<QuestionnaireResponse> {
@@ -132,20 +138,23 @@ export class QuestionnaireService {
     });
   }
 
-  /**
-   */
   async finalizeQuestionnaire(
     questionnaireId: string,
     userId: string,
     offer: string,
+    billing?: {
+      firstName?: string;
+      lastName?: string;
+      street?: string;
+      postalCode?: string;
+      city?: string;
+    },
   ): Promise<QuestionnaireResponse> {
     const response = await this.responseRepository.findOne({
       where: { id: questionnaireId },
       relations: ['clientProfile', 'clientProfile.user'],
     });
     if (!response) throw new NotFoundException('Questionnaire not found.');
-
-    // تحقق الملكية إن وجد user مرتبط
     if (response.clientProfile && (response.clientProfile as any).user) {
       const ownerUserId = (response.clientProfile as any).user.id;
       if (ownerUserId !== userId) {
@@ -155,36 +164,100 @@ export class QuestionnaireService {
       }
     }
 
-    // تحقق صحة العرض
     const offerValue = Object.values(OfferType).find(
       (o) => o.toLowerCase() === offer.toLowerCase(),
     );
     if (!offerValue) throw new BadRequestException('Invalid offer selected.');
 
-    // خزّن العرض داخل البيانات (أو حقل مخصص لو أردت)
-    response.data = { ...response.data, offer: offerValue };
+    response.data = {
+      ...response.data,
+      offer: offerValue,
+      billingFirstName: billing?.firstName ?? response.data.billingFirstName,
+      billingLastName: billing?.lastName ?? response.data.billingLastName,
+      billingStreet: billing?.street ?? response.data.billingStreet,
+      billingPostalCode: billing?.postalCode ?? response.data.billingPostalCode,
+      billingCity: billing?.city ?? response.data.billingCity,
+    };
     response.status = 'COMPLETED';
-    return this.responseRepository.save(response);
+    const savedResponse = await this.responseRepository.save(response);
+
+    try {
+      const clientProfile = response.clientProfile as ClientProfile | undefined;
+
+      let declaration = await this.declarationsRepository.findOne({
+        where: { questionnaireSnapshot: { id: questionnaireId } },
+      });
+
+      if (!declaration) {
+        declaration = this.declarationsRepository.create({
+          clientProfile,
+          offer: offerValue,
+          status: DeclarationStatus.DRAFT,
+          questionnaireSnapshot: savedResponse.data,
+        });
+        await this.declarationsRepository.save(declaration);
+      }
+
+      const normalized = {
+        isMarried: savedResponse.data.maritalStatus === 'married',
+        numKids: Number(savedResponse.data.childrenCount ?? 0),
+        numIncomeSources: Number(savedResponse.data.incomeSources ?? 0),
+        numSecurities: Number(savedResponse.data.wealthStatements ?? 0),
+        numRealEstate: Number(savedResponse.data.properties ?? 0),
+        firstTimeDeclaredCount: Number(savedResponse.data.newProperties ?? 0),
+      };
+
+      const priceDetails = this.pricingService.calculatePrice(
+        normalized,
+        offerValue,
+      );
+
+      let pricingRecord = await this.pricingRepository.findOne({
+        where: { declaration: { id: declaration.id } },
+      });
+
+      if (!pricingRecord) {
+        pricingRecord = this.pricingRepository.create({
+          declaration,
+          basePrice: priceDetails.basePrice,
+          surcharges: priceDetails.surcharges as any,
+          finalPrice: priceDetails.finalPrice,
+          status: PricingStatus.CALCULATED,
+          calculatedAt: new Date(),
+        });
+        await this.pricingRepository.save(pricingRecord);
+      }
+
+      declaration.pricing = pricingRecord;
+      await this.declarationsRepository.save(declaration);
+
+      await this.ordersService.initStepsIfEmpty(declaration.id);
+    } catch (err) {
+      console.error('Failed linking questionnaire to declaration: ', err);
+      // لا تلقي الخطأ للأعلى بحيث لا يكسر API، لكن ممكن ترمي استثناء حسب سياستك
+    }
+
+    return savedResponse;
   }
 
-  /**
-   * استلام إجابات مجهولة و إنشاء Declaration مؤقت
-   * (ننشئ response مستقل ثم declaration يحتوي snapshot)
-   */
   async createTempDeclaration(answers: any): Promise<TaxDeclaration> {
-    // 1. إنشاء استجابة مستقلة مكتملة
     const response = this.responseRepository.create({
       data: answers,
       status: 'COMPLETED',
     });
     await this.responseRepository.save(response);
 
-    // 2. إنشاء Declaration مع snapshot من الإجابات
     const newDecl = this.declarationsRepository.create({
       status: DeclarationStatus.PENDING_PRICING,
       questionnaireSnapshot: answers,
     } as Partial<TaxDeclaration>);
     const savedDecl = await this.declarationsRepository.save(newDecl);
+
+    try {
+      await this.ordersService.initStepsIfEmpty(savedDecl.id);
+    } catch (err) {
+      console.error('Failed to init steps for temp declaration', err);
+    }
 
     return savedDecl;
   }

@@ -7,8 +7,6 @@ import {
   OneToOne,
   ManyToOne,
 } from 'typeorm';
-// import { ClientProfile } from '../users/client-profile.entity'; // **تم حذف هذا الاستيراد**
-// import { TaxDeclaration } from '../orders/tax-declaration.entity'; // **استيراد كيان الطلب**
 import { Pricing } from 'src/pricing/pricing.entity';
 import { ClientProfile } from '../users/client-profile.entity';
 
@@ -17,13 +15,6 @@ import { ClientProfile } from '../users/client-profile.entity';
 export class QuestionnaireResponse {
   @PrimaryGeneratedColumn('uuid')
   id: string;
-
-  // @OneToOne(
-  //   () => TaxDeclaration,
-  //   (declaration) => declaration.questionnaireResponse,
-  //   { nullable: true },
-  // )
-  // declaration?: TaxDeclaration;
 
   @OneToOne(() => Pricing, (pricing) => pricing.questionnaireResponse)
   pricing?: Pricing;

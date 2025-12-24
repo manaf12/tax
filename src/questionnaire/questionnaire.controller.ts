@@ -5,12 +5,15 @@ import {
   UseGuards,
   // Get,
   NotFoundException,
+  ValidationPipe,
+  UsePipes,
 } from '@nestjs/common';
 import { QuestionnaireService } from './questionnaire.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { QuestionnaireResponse } from './questionnaire-response.entity';
 import { User } from 'src/auth/user.decorator';
 import { Param } from '@nestjs/common';
+import { FinalizeDto } from './dto/finalize.dto';
 // import { OfferType } from 'src/orders/tax-declaration.entity';
 // import { IsEnum } from 'class-validator';
 // import { Transform } from 'class-transformer';
@@ -69,15 +72,17 @@ export class QuestionnaireController {
 
   @Post(':declarationId/finalize')
   @UseGuards(JwtAuthGuard)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async finalize(
     @User('sub') userId: string,
     @Param('declarationId') declarationId: string,
-    @Body() { offer }: any,
+    @Body() body: FinalizeDto,
   ): Promise<QuestionnaireResponse> {
     const finalized = await this.questionnaireService.finalizeQuestionnaire(
       declarationId,
       userId,
-      offer,
+      body.offer,
+      body.billing,
     );
     if (!finalized) {
       throw new NotFoundException(

@@ -1,68 +1,99 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
   Logger,
   InternalServerErrorException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { Client } from 'minio';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class MinioService {
+export class MinioService implements OnModuleInit {
   private readonly logger = new Logger(MinioService.name);
   private readonly minioClient: Client;
   private readonly bucketName: string;
 
+  // الخصائص العامة (للمتصفح)
+  private readonly publicHost: string;
+  private readonly publicPort: number; // يجب أن يكون رقمًا
+
+  // الخصائص السرية (للتوقيع)
+  private readonly accessKey: string;
+  private readonly secretKey: string;
+  private readonly useSSL: boolean;
+  private readonly internalEndpoint: string; // جديد
+  private readonly internalPort: number; // جديد
+
   constructor(private configService: ConfigService) {
+    // --- 1. قراءة وتخزين اسم الـ Bucket ---
     this.bucketName = this.configService.get<string>(
       'MINIO_BUCKET_NAME',
       'swisstax-files',
     );
-    const endPoint = this.configService.get<string>(
-      'MINIO_ENDPOINT',
-      'localhost',
-    );
-    const portRaw = this.configService.get<string | number>('MINIO_PORT', 9000);
-    const useSSLRaw = this.configService.get<string | boolean>(
-      'MINIO_USE_SSL',
-      false,
-    );
-    const accessKey = this.configService.get<string>(
-      'MINIO_ACCESS_KEY',
-      'minioadmin',
-    );
-    const secretKey = this.configService.get<string>(
-      'MINIO_SECRET_KEY',
-      'minioadmin',
-    );
+    if (!this.bucketName) {
+      throw new InternalServerErrorException(
+        'MINIO_BUCKET_NAME is not defined in .env',
+      );
+    }
 
-    // تحويل port إلى number
-    const port = typeof portRaw === 'string' ? parseInt(portRaw, 10) : portRaw;
+    // --- 2. قراءة المتغيرات الداخلية والسرية والتحقق منها ---
+    const endPoint = this.configService.get<string>('MINIO_ENDPOINT');
+    const portRaw = this.configService.get<string>('MINIO_PORT'); // قراءة كـ string فقط
+    const useSSLRaw = this.configService.get<string>('MINIO_USE_SSL'); // قراءة كـ string فقط
+    const accessKey = this.configService.get<string>('MINIO_ACCESS_KEY');
+    const secretKey = this.configService.get<string>('MINIO_SECRET_KEY');
+
+    if (!endPoint || !portRaw || !accessKey || !secretKey || !useSSLRaw) {
+      throw new InternalServerErrorException(
+        'One or more required MinIO internal environment variables are missing.',
+      );
+    }
+
+    // --- 3. تحويل وتخزين القيم الداخلية ---
+    const port = parseInt(portRaw, 10); // تحويل آمن بعد التحقق
     if (Number.isNaN(port)) {
       throw new InternalServerErrorException(
         'MINIO_PORT is not a valid number',
       );
     }
-
-    // تحويل useSSL إلى boolean — نقبل: true | 'true' | '1' => true
-    const useSSL =
-      useSSLRaw === true ||
-      (typeof useSSLRaw === 'string' &&
-        ['true', '1', 'yes'].includes(useSSLRaw.toLowerCase()));
-
-    this.logger.log(
-      `MinIO config: endpoint=${endPoint}, port=${port}, useSSL=${useSSL}`,
-    );
-
+    this.internalEndpoint = endPoint; // تخزين نقطة النهاية الداخلية
+    this.internalPort = port; // تخزين المنفذ الداخلي
+    this.useSSL = ['true', '1'].includes(useSSLRaw); // تحويل آمن
+    this.accessKey = accessKey;
+    this.secretKey = secretKey;
+    // --- 4. إنشاء العميل الداخلي ---
     this.minioClient = new Client({
-      endPoint,
-      port,
-      useSSL,
-      accessKey,
-      secretKey,
+      endPoint: this.internalEndpoint, // استخدام القيمة المخزنة
+      port: this.internalPort, // استخدام القيمة المخزنة
+      useSSL: this.useSSL,
+      accessKey: this.accessKey,
+      secretKey: this.secretKey,
     });
 
-    this.ensureBucketExists();
+    // --- 5. قراءة وتخزين الإعدادات العامة (للمتصفح) ---
+    const publicHostFromEnv =
+      this.configService.get<string>('MINIO_PUBLIC_HOST');
+    const publicPortRaw = this.configService.get<string>('MINIO_PUBLIC_PORT'); // قراءة كـ string فقط
+
+    if (!publicHostFromEnv || !publicPortRaw) {
+      throw new InternalServerErrorException(
+        'MINIO_PUBLIC_HOST or MINIO_PUBLIC_PORT is not defined in .env file. These are required to generate public URLs.',
+      );
+    }
+
+    // *** التصحيح الرئيسي: تحويل المنفذ العام إلى رقم صحيح ***
+    const publicPort = parseInt(publicPortRaw, 10); // تحويل آمن بعد التحقق
+    if (Number.isNaN(publicPort)) {
+      throw new InternalServerErrorException(
+        'MINIO_PUBLIC_PORT is not a valid number',
+      );
+    }
+
+    this.publicHost = publicHostFromEnv;
+    this.publicPort = publicPort; // تخزين القيمة المحولة إلى رقم
+
+    // this.ensureBucketExists();
   }
 
   private async ensureBucketExists() {
@@ -115,9 +146,8 @@ export class MinioService {
       throw new InternalServerErrorException('File upload failed.');
     }
   }
-
   /**
-   * ينشئ رابطًا مؤقتًا آمنًا لتنزيل الملف
+   * ينشئ رابطًا مؤقتًا آمنًا لتنزيل الملف، ويقوم بتصحيح المضيف يدوياً.
    * @param objectName اسم الملف في MinIO
    * @param expiry صلاحية الرابط بالثواني (افتراضي 7 أيام)
    * @returns رابط التنزيل المؤقت
@@ -127,16 +157,58 @@ export class MinioService {
     expiry: number = 60 * 60 * 24 * 7,
   ): Promise<string> {
     try {
-      const url = await this.minioClient.presignedGetObject(
+      // 1. إنشاء عميل MinIO مؤقت لغرض التوقيع فقط.
+      // نستخدم إعدادات المضيف العام (192.168.1.7:9000) لضمان التوقيع الصحيح.
+      // هذا لن يسبب ECONNREFUSED لأن 192.168.1.7 هو عنوان IP حقيقي.
+      const publicUrlClient = new Client({
+        endPoint: this.publicHost, // 192.168.1.7
+        port: this.publicPort, // 9000
+        useSSL: this.useSSL,
+        accessKey: this.accessKey,
+        secretKey: this.secretKey,
+      });
+
+      // 2. استخدام العميل المؤقت لإنشاء الرابط.
+      // الرابط الناتج سيحتوي على التوقيع الصحيح والمضيف الصحيح (192.168.1.7:9000).
+      const publicUrl = await publicUrlClient.presignedGetObject(
         this.bucketName,
         objectName,
         expiry,
       );
-      return url;
+
+      // (اختياري) طباعة للتأكد
+      this.logger.log(`Final Public URL with correct signature: ${publicUrl}`);
+
+      return publicUrl;
     } catch (error) {
-      this.logger.error(`Failed to get presigned URL for ${objectName}`, error);
+      // إذا ظهر خطأ 500 الآن، فإنه يعني أن مفاتيح الوصول السرية غير متطابقة.
+      this.logger.error(
+        `FATAL ERROR: Failed to get presigned URL. Root cause:`,
+        error.message,
+        error.stack,
+      );
       throw new InternalServerErrorException(
-        'Failed to generate download link.',
+        `Failed to generate download link. Please check your MINIO_ACCESS_KEY and MINIO_SECRET_KEY.`,
+      );
+    }
+  }
+
+  async onModuleInit() {
+    // *** تغيير الاسم إلى onModuleInit ***
+    try {
+      const exists = await this.minioClient.bucketExists(this.bucketName);
+      if (!exists) {
+        await this.minioClient.makeBucket(this.bucketName, 'us-east-1');
+        this.logger.log(
+          `MinIO Bucket '${this.bucketName}' created successfully.`,
+        );
+      } else {
+        this.logger.log(`MinIO Bucket '${this.bucketName}' already exists.`);
+      }
+    } catch (error) {
+      this.logger.error('Failed to ensure MinIO bucket exists', error);
+      throw new Error(
+        'MinIO initialization failed: Could not connect or create bucket.',
       );
     }
   }

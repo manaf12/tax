@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
   NotFoundException,
@@ -17,6 +16,8 @@ import { UserRole } from '../users/user.entity'; // استخدام UserRole من
 import { PricingService } from 'src/pricing/pricing.service';
 import { Pricing } from 'src/pricing/pricing.entity';
 import { PricingStatus } from 'src/pricing/pricing-status.enum';
+import { Step } from '../types/steps'; // عدّل المسار بحسب مشروعك
+import { StepStatus } from '../types/steps';
 
 @Injectable()
 export class OrdersService {
@@ -30,6 +31,42 @@ export class OrdersService {
     private pricingRepository: Repository<Pricing>,
     private dataSource: DataSource,
   ) {}
+
+  private getDefaultSteps(): Step[] {
+    return [
+      {
+        id: 'documentsPreparation',
+        order: 1,
+        nameKey: 'steps.documentsPreparation',
+        status: StepStatus.PENDING,
+      },
+      {
+        id: 'documentsReview',
+        order: 2,
+        nameKey: 'steps.documentsReview',
+        status: StepStatus.PENDING,
+      },
+      {
+        id: 'taxPreparation',
+        order: 3,
+        nameKey: 'steps.taxPreparation',
+        status: StepStatus.PENDING,
+      },
+      {
+        id: 'reviewAndValidation',
+        order: 4,
+        nameKey: 'steps.reviewAndValidation',
+        status: StepStatus.PENDING,
+      },
+      {
+        id: 'submission',
+        order: 5,
+        nameKey: 'steps.submission',
+        status: StepStatus.PENDING,
+      },
+    ];
+  }
+
   /**
    * @param declarationId معرف الإقرار
    * @param relations العلاقات المراد تحميلها
@@ -40,7 +77,7 @@ export class OrdersService {
     relations: string[] = [],
   ): Promise<TaxDeclaration> {
     // إضافة العلاقات الأساسية للتحقق من الملكية إذا لم تكن موجودة
-    const defaultRelations = ['clientProfile', 'clientProfile.user'];
+    const defaultRelations = ['clientProfile', 'clientProfile.user', 'files'];
     const finalRelations = [...new Set([...defaultRelations, ...relations])];
 
     const declaration = await this.declarationsRepository.findOne({
@@ -287,48 +324,76 @@ export class OrdersService {
     pricingId: string,
     userId: string,
   ): Promise<TaxDeclaration> {
-    // 1) جلب pricing مع العلاقة questionnaireResponse
     const pricing = await this.pricingRepository.findOne({
       where: { id: pricingId },
       relations: ['questionnaireResponse'],
     });
     if (!pricing) throw new NotFoundException('Pricing not found.');
 
-    // 2) جلب المستخدم و profile
     const user = await this.usersService.findOneWithProfile(userId);
     if (!user || !user.profile) {
       throw new NotFoundException('User/profile not found');
     }
 
-    // 3) داخل transaction
     return await this.dataSource.transaction(async (manager) => {
       const declRepo = manager.getRepository(TaxDeclaration);
       const pricingRepo = manager.getRepository(Pricing);
 
-      // الطريقة الآمنة لإنشاء الكيان لتفادي مشكلة overload
-      const declaration = declRepo.create(); // إنشاء فارغ ثم تعبئته
-      Object.assign(declaration, {
-        clientProfile: user.profile,
-        questionnaireResponse: pricing.questionnaireResponse ?? null,
-        pricing: pricing,
-        status: DeclarationStatus.PENDING_PAYMENT,
-        questionnaireSnapshot: pricing.questionnaireResponse?.data ?? null,
-      } as Partial<TaxDeclaration>); // cast لتجنب أخطاء DeepPartial
+      // 1) حاول إيجاد مسوَّدة موجودة للمستخدم
+      const draft = await declRepo.findOne({
+        where: {
+          clientProfile: { id: user.profile.id },
+          status: DeclarationStatus.DRAFT,
+        },
+      });
 
-      // حفظ والـ cast للتأكد أننا نحصل على كيان واحد (وليس مصفوفة)
-      const savedDecl = await declRepo.save(declaration);
+      const snapshot = pricing.questionnaireResponse?.data ?? null;
+      const offerFromSnapshot = snapshot?.offer ?? null;
 
-      // ربط الـ pricing -> declaration
-      pricing.declaration = savedDecl;
+      if (draft) {
+        // 2) وجدنا مسودة -> حدّثها بدل إنشاء واحدة جديدة
+        draft.pricing = pricing;
+        draft.status = DeclarationStatus.PENDING_PAYMENT;
+        draft.questionnaireSnapshot = snapshot ?? undefined;
+        draft.offer = offerFromSnapshot;
+        draft.currentStep = draft.currentStep ?? 1;
+        draft.steps =
+          Array.isArray(draft.steps) && draft.steps.length
+            ? draft.steps
+            : this.getDefaultSteps();
 
-      // إذا لديك enum مستورد استخدمه، وإلا قم بالتحويل المؤقّت:
-      if (typeof PricingStatus !== 'undefined') {
-        pricing.status = PricingStatus.ACCEPTED;
-      } else {
-        // fallback مؤقت إن لم تكن قد عرّفت enum
-        (pricing as any).status = 'ACCEPTED';
+        const saved = await declRepo.save(draft);
+
+        // حدّث حالة التسعيرة واربطها
+        pricing.declaration = saved;
+        pricing.status =
+          typeof PricingStatus !== 'undefined'
+            ? PricingStatus.ACCEPTED
+            : ('ACCEPTED' as any);
+        await pricingRepo.save(pricing);
+
+        return saved;
       }
 
+      // 3) لم نجد مسودة -> أنشئ إقرارًا جديدًا (كالقبل)
+      const declaration = declRepo.create();
+      Object.assign(declaration, {
+        clientProfile: user.profile,
+        pricing: pricing,
+        status: DeclarationStatus.PENDING_PAYMENT,
+        questionnaireSnapshot: snapshot,
+        offer: offerFromSnapshot,
+        steps: this.getDefaultSteps(),
+        currentStep: 1,
+      } as Partial<TaxDeclaration>);
+
+      const savedDecl = await declRepo.save(declaration);
+
+      pricing.declaration = savedDecl;
+      pricing.status =
+        typeof PricingStatus !== 'undefined'
+          ? PricingStatus.ACCEPTED
+          : ('ACCEPTED' as any);
       await pricingRepo.save(pricing);
 
       return savedDecl;
@@ -336,9 +401,9 @@ export class OrdersService {
   }
   async updateStep(
     declarationId: string,
-    step: string,
-    status: string,
-    actorId: string, // من قام بالتعديل (userId أو adminId)
+    stepId: string,
+    status: StepStatus,
+    actorId: string,
     extra?: Record<string, any>,
   ) {
     const decl = await this.declarationsRepository.findOne({
@@ -346,16 +411,152 @@ export class OrdersService {
     });
     if (!decl) throw new NotFoundException('Declaration not found');
 
-    const steps = decl.steps ?? {};
-    steps[step] = {
-      ...(steps[step] ?? {}),
+    // تهيئة المصفوفة إذا كانت فارغة أو موجودة بالشكل القديم
+    const steps: Step[] = Array.isArray(decl.steps)
+      ? decl.steps
+      : this.getDefaultSteps();
+
+    // تأكد وجود خطوة بالـ id المطلوب
+    const idx = steps.findIndex((s) => s.id === stepId);
+    if (idx === -1) {
+      throw new BadRequestException('Invalid step id');
+    }
+
+    // حدّث الخطوة
+    steps[idx] = {
+      ...steps[idx],
       status,
       updatedAt: new Date().toISOString(),
       updatedBy: actorId,
-      ...extra,
+      meta: {
+        ...(steps[idx].meta ?? {}),
+        ...(extra ?? {}),
+      },
     };
 
+    // حساب currentStep: أول خطوة IN_PROGRESS أو أول خطوة ليست DONE
+    const inProgress = steps.find((s) => s.status === StepStatus.IN_PROGRESS);
+    const firstNotDone = steps.find((s) => s.status !== StepStatus.DONE);
+    decl.currentStep = inProgress
+      ? inProgress.order
+      : firstNotDone
+        ? firstNotDone.order
+        : steps.length;
+
     decl.steps = steps;
+
+    if (steps.every((s) => s.status === StepStatus.DONE)) {
+      decl.status = DeclarationStatus.COMPLETED;
+    } else if (steps.some((s) => s.status === StepStatus.IN_PROGRESS)) {
+      decl.status = DeclarationStatus.IN_REVIEW; // أو ما يناسب منطقك
+    }
+
     return this.declarationsRepository.save(decl);
+  }
+
+  public async initStepsIfEmpty(declarationId: string) {
+    const decl = await this.declarationsRepository.findOne({
+      where: { id: declarationId },
+    });
+    if (!decl) throw new NotFoundException('Declaration not found.');
+
+    if (!Array.isArray(decl.steps) || decl.steps.length === 0) {
+      decl.steps = this.getDefaultSteps();
+      decl.currentStep = 1;
+      await this.declarationsRepository.save(decl);
+    }
+
+    return decl;
+  }
+
+  async confirmDownloadByUser(
+    declarationId: string,
+    stepId: string,
+    userId: string,
+    fileId?: string,
+  ): Promise<TaxDeclaration> {
+    // الخطوة 1: التحقق من أن الطلب موجود وأن المستخدم الحالي هو المالك
+    const decl = await this.findDeclarationById(declarationId, [
+      'clientProfile',
+      'clientProfile.user',
+      'files',
+    ]);
+    if (decl.clientProfile.user.id !== userId) {
+      throw new ForbiddenException('You do not own this declaration.');
+    }
+
+    // الخطوة 2: التحقق من وجود ملف مرتبط بهذه الخطوة (هذا الجزء اختياري ولكنه جيد)
+    if (fileId) {
+      const file = decl.files?.find((f) => f.id === fileId);
+      if (!file) {
+        throw new BadRequestException('File not found in this declaration.');
+      }
+      // يمكنك إضافة تحقق إضافي هنا إذا أردت
+      // if (file.meta?.deliveredForStep !== stepId) { ... }
+    } else {
+      // إذا لم يتم توفير fileId، ابحث عن أي ملف تم تسليمه لهذه الخطوة
+      const hasStepFile = decl.files?.some(
+        (f) => f.meta?.deliveredForStep === stepId,
+      );
+      if (!hasStepFile) {
+        throw new BadRequestException('No file found for this step.');
+      }
+    }
+
+    await this.updateStep(declarationId, stepId, StepStatus.DONE, userId, {
+      confirmedAt: new Date().toISOString(),
+      fileId: fileId ?? null,
+    });
+
+    if (stepId === 'reviewAndValidation') {
+      await this.declarationsRepository.update(
+        { id: declarationId },
+        { currentStep: 5 }, // استخدم 'currentStep' كما هو في كيان TaxDeclaration
+      );
+      // هذا السجل سيساعدك في تصحيح الأخطاء مستقبلاً
+      console.log(
+        `Declaration ${declarationId} has been moved to step 5 after user confirmation.`,
+      );
+    }
+    return this.findDeclarationById(declarationId);
+  }
+  async saveDeclaration(
+    declarationId: string,
+    partial: Partial<TaxDeclaration>,
+  ) {
+    // افترض أن لديك injected repository باسم this.declarationRepository
+    await this.declarationsRepository.update(declarationId, partial);
+    return this.declarationsRepository.findOne({
+      where: { id: declarationId },
+    });
+  }
+
+  async addAdminFileToStep(
+    declarationId: string,
+    stepId: string,
+    fileId: string,
+  ): Promise<void> {
+    const decl = await this.findDeclarationById(declarationId);
+    const steps = decl.steps ?? [];
+    const stepIndex = steps.findIndex((s) => s.id === stepId);
+
+    if (stepIndex === -1) {
+      console.warn(
+        `Step with id ${stepId} not found for declaration ${declarationId}. Cannot add admin file.`,
+      );
+      return;
+    }
+
+    const existingMeta = steps[stepIndex].meta ?? {};
+    // استخدم اسمًا واضحًا للمفتاح، مثل 'draftFileId'
+    const newMeta = { ...existingMeta, draftFileId: fileId };
+
+    steps[stepIndex] = { ...steps[stepIndex], meta: newMeta };
+
+    // تحديث حقل steps فقط، دون لمس currentStep
+    await this.declarationsRepository.update(
+      { id: declarationId },
+      { steps: steps },
+    );
   }
 }
