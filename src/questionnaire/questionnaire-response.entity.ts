@@ -9,8 +9,6 @@ import {
 } from 'typeorm';
 import { Pricing } from 'src/pricing/pricing.entity';
 import { ClientProfile } from '../users/client-profile.entity';
-
-// يمثل هذا الكيان استجابة العميل الكاملة للاستبيان
 @Entity('questionnaire_responses')
 export class QuestionnaireResponse {
   @PrimaryGeneratedColumn('uuid')
@@ -33,4 +31,12 @@ export class QuestionnaireResponse {
 
   @UpdateDateColumn()
   updatedAt: Date;
+  @Column({ nullable: true })
+  anonymousToken?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  anonymousExpiresAt?: Date;
+
+  @Column({ default: false })
+  isAnonymous?: boolean;
 }

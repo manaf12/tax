@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { User, UserRole } from './user.entity';
 import { ClientProfile } from './client-profile.entity';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 
 interface ProfileData {
@@ -34,7 +34,12 @@ export class UsersService {
       relations: ['profile'],
     });
   }
-
+  async findByIds(ids: string[]): Promise<User[]> {
+    return this.usersRepository.find({
+      where: { id: In(ids) },
+      relations: ['profile'],
+    });
+  }
   async createUser(
     email: string,
     passwordHash: string,
@@ -77,5 +82,31 @@ export class UsersService {
   }
   async saveUser(user: User): Promise<User> {
     return this.usersRepository.save(user);
+  }
+
+  async getOrCreateClientProfile(
+    userId: string,
+    data?: Partial<ClientProfile>,
+  ): Promise<ClientProfile> {
+    const existing = await this.clientProfileRepository.findOne({
+      where: { user: { id: userId } },
+      relations: ['user'],
+    });
+    if (existing) return existing;
+
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const profile = this.clientProfileRepository.create({
+      user,
+      firstName: data?.firstName ?? '',
+      lastName: data?.lastName ?? '',
+      streetAddress: data?.streetAddress ?? '',
+      postalCode: data?.postalCode ?? '',
+      city: data?.city ?? '',
+      languagePreference: 'en',
+    });
+
+    return this.clientProfileRepository.save(profile);
   }
 }

@@ -24,6 +24,7 @@ import {
 import { PricingService } from 'src/pricing/pricing.service';
 import { PricingStatus } from 'src/pricing/pricing-status.enum';
 import { ClientProfile } from 'src/users/client-profile.entity';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class QuestionnaireService {
@@ -37,7 +38,7 @@ export class QuestionnaireService {
     @Inject(forwardRef(() => OrdersService))
     private ordersService: OrdersService,
     private usersService: UsersService,
-    @Inject(forwardRef(() => PricingService)) // <--- التعديل المقترح
+    @Inject(forwardRef(() => PricingService))
     private readonly pricingService: PricingService,
   ) {}
 
@@ -45,19 +46,16 @@ export class QuestionnaireService {
    * @param userId
    */
   async startQuestionnaire(userId: string): Promise<QuestionnaireResponse> {
-    // 1) جلب المستخدم و profile
     const user = await this.usersService.findOneWithProfile(userId);
     if (!user || !user.profile) {
       throw new NotFoundException('User or client profile not found.');
     }
 
-    // 2) جلب استجابة قيد التقدم خاصة بهذا الملف الشخصي (إن وجدت)
     let response = await this.responseRepository.findOne({
       where: { clientProfile: { id: user.profile.id }, status: 'IN_PROGRESS' },
       relations: ['clientProfile'],
     });
 
-    // 3) إن لم توجد، ننشئ واحدة جديدة (مستقلة)
     if (!response) {
       response = this.responseRepository.create({
         clientProfile: user.profile,
@@ -70,13 +68,10 @@ export class QuestionnaireService {
     return response;
   }
 
-  /**
-   * حفظ خطوة واحدة في الاستبيان
-   */
   async saveStep(
     questionnaireId: string,
-    userId: string,
     stepData: Record<string, any>,
+    userId?: string,
   ): Promise<QuestionnaireResponse> {
     const response = await this.responseRepository.findOne({
       where: { id: questionnaireId },
@@ -84,7 +79,6 @@ export class QuestionnaireService {
     });
     if (!response) throw new NotFoundException('Questionnaire not found.');
 
-    // تحقق الملكية إن خزنت clientProfile.user
     if (response.clientProfile && (response.clientProfile as any).user) {
       const ownerUserId = (response.clientProfile as any).user.id;
       if (ownerUserId !== userId) {
@@ -94,16 +88,13 @@ export class QuestionnaireService {
       }
     }
 
-    // اگر stepData undefined لا نفعل شيئاً
     if (!stepData || Object.keys(stepData).length === 0) {
-      // يمكنك تغيير السلوك هنا إذا أردت رفض الطلب بدل التجاهل
       return response;
     }
 
     response.data = { ...response.data, ...stepData };
     response.status = 'IN_PROGRESS';
 
-    // احفظ ثم أعد تحميل مع العلاقات حتى تُعرض كاملة في الرد
     await this.responseRepository.save(response);
 
     const reloaded = await this.responseRepository.findOne({
@@ -126,9 +117,6 @@ export class QuestionnaireService {
     return pricing.questionnaireResponse ?? null;
   }
 
-  /**
-   * إرجاع استجابة حسب questionnaireId
-   */
   async getResponseById(
     questionnaireId: string,
   ): Promise<QuestionnaireResponse | null> {
@@ -234,22 +222,30 @@ export class QuestionnaireService {
       await this.ordersService.initStepsIfEmpty(declaration.id);
     } catch (err) {
       console.error('Failed linking questionnaire to declaration: ', err);
-      // لا تلقي الخطأ للأعلى بحيث لا يكسر API، لكن ممكن ترمي استثناء حسب سياستك
     }
 
     return savedResponse;
   }
 
-  async createTempDeclaration(answers: any): Promise<TaxDeclaration> {
+  async createTempDeclaration(answers: any): Promise<{
+    declaration: TaxDeclaration;
+    token: string;
+  }> {
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
+
     const response = this.responseRepository.create({
       data: answers,
       status: 'COMPLETED',
+      isAnonymous: true,
+      anonymousToken: token,
+      anonymousExpiresAt: expiresAt,
     });
-    await this.responseRepository.save(response);
+    const savedResponse = await this.responseRepository.save(response);
 
     const newDecl = this.declarationsRepository.create({
       status: DeclarationStatus.PENDING_PRICING,
-      questionnaireSnapshot: answers,
+      questionnaireSnapshot: savedResponse.data,
     } as Partial<TaxDeclaration>);
     const savedDecl = await this.declarationsRepository.save(newDecl);
 
@@ -259,14 +255,95 @@ export class QuestionnaireService {
       console.error('Failed to init steps for temp declaration', err);
     }
 
-    return savedDecl;
+    return {
+      declaration: savedDecl,
+      token,
+    };
   }
-
   async createStandaloneResponse(): Promise<QuestionnaireResponse> {
     const response = this.responseRepository.create({
       data: {},
       status: 'IN_PROGRESS',
     });
     return this.responseRepository.save(response);
+  }
+  async claimAnonymous(
+    token: string,
+    userId: string,
+  ): Promise<{
+    questionnaire: QuestionnaireResponse;
+    declaration: TaxDeclaration | null;
+  }> {
+    const response = await this.responseRepository.findOne({
+      where: { anonymousToken: token },
+      relations: ['clientProfile'],
+    });
+
+    if (!response) {
+      throw new NotFoundException('Invalid or expired token');
+    }
+
+    if (!response.isAnonymous) {
+      throw new BadRequestException('Questionnaire already claimed');
+    }
+
+    if (
+      response.anonymousExpiresAt &&
+      response.anonymousExpiresAt < new Date()
+    ) {
+      throw new BadRequestException('Token expired');
+    }
+    const clientProfile =
+      await this.usersService.getOrCreateClientProfile(userId);
+    response.clientProfile = clientProfile;
+    response.isAnonymous = false;
+    response.anonymousToken = undefined;
+    response.anonymousExpiresAt = undefined;
+
+    const savedResponse = await this.responseRepository.save(response);
+
+    await this.declarationsRepository.update(
+      { questionnaireSnapshot: savedResponse.data },
+      { clientProfile },
+    );
+
+    const declaration = await this.declarationsRepository.findOne({
+      where: { questionnaireSnapshot: savedResponse.data },
+    });
+
+    return { questionnaire: savedResponse, declaration: declaration ?? null };
+  }
+  async createTempDeclarationFromResponse(questionnaireId: string): Promise<{
+    declaration: TaxDeclaration;
+    token: string;
+  }> {
+    const response = await this.responseRepository.findOne({
+      where: { id: questionnaireId },
+    });
+
+    if (!response) throw new NotFoundException('Questionnaire not found.');
+
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
+
+    response.isAnonymous = true;
+    response.anonymousToken = token;
+    response.anonymousExpiresAt = expiresAt;
+    response.status = 'COMPLETED';
+    await this.responseRepository.save(response);
+
+    const newDecl = this.declarationsRepository.create({
+      status: DeclarationStatus.PENDING_PRICING,
+      questionnaireSnapshot: response.data,
+    } as Partial<TaxDeclaration>);
+    const savedDecl = await this.declarationsRepository.save(newDecl);
+
+    try {
+      await this.ordersService.initStepsIfEmpty(savedDecl.id);
+    } catch (err) {
+      console.error('Failed to init steps for temp declaration', err);
+    }
+
+    return { declaration: savedDecl, token };
   }
 }

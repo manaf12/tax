@@ -1,5 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,6 +14,8 @@ import {
 } from '../orders/tax-declaration.entity';
 import { OrdersService } from '../orders/order.service';
 import { Step, StepStatus } from 'src/types/steps';
+import { UsersService } from 'src/users/users.service';
+import { UserRole } from 'src/users/user.entity';
 
 @Injectable()
 export class AdminService {
@@ -18,6 +23,7 @@ export class AdminService {
     @InjectRepository(TaxDeclaration)
     private taxDeclarationRepository: Repository<TaxDeclaration>,
     private readonly ordersService: OrdersService,
+    private readonly usersService: UsersService,
   ) {}
 
   /**
@@ -81,7 +87,6 @@ export class AdminService {
     return updatedDecl;
   }
   /**
-   * Updates a specific step in a declaration.
    * @param declarationId The ID of the declaration.
    * @param adminId The ID of the admin performing the action.
    * @param stepId The ID of the step to update (e.g., 'documentsReview', 'taxPreparation').
@@ -111,5 +116,67 @@ export class AdminService {
     );
 
     return updatedDecl;
+  }
+
+  async assignDeclarations(
+    declarationIds: string[],
+    adminId: string,
+    assignedById: string,
+    note?: string,
+  ) {
+    const adminUser = await this.usersService.findOneById(adminId);
+    if (!adminUser) throw new NotFoundException('Target admin user not found.');
+    if (!adminUser.roles?.includes(UserRole.ADMIN)) {
+      throw new ForbiddenException('Target user is not an admin.');
+    }
+    const updated = await this.ordersService.assignDeclarationsToAdmin(
+      declarationIds,
+      adminId,
+      assignedById,
+      note,
+    );
+
+    return updated;
+  }
+  async getStepCounters() {
+    return this.ordersService.getCountsByCurrentStep();
+  }
+
+  async listDeclarations(query: {
+    page?: number;
+    perPage?: number;
+    status?: DeclarationStatus;
+    currentStep?: number;
+    assignedAdminId?: string;
+    search?: string;
+  }) {
+    const page = query.page ?? 1;
+    const perPage = Math.min(query.perPage ?? 20, 100);
+
+    const qb = this.taxDeclarationRepository.createQueryBuilder('d');
+    qb.leftJoinAndSelect('d.clientProfile', 'cp')
+      .leftJoinAndSelect('cp.user', 'u')
+      .leftJoinAndSelect('d.pricing', 'p')
+      .leftJoinAndSelect('d.files', 'f');
+
+    if (query.status)
+      qb.andWhere('d.status = :status', { status: query.status });
+    if (query.currentStep)
+      qb.andWhere('d.currentStep = :cs', { cs: query.currentStep });
+    if (query.assignedAdminId)
+      qb.andWhere('d.assignedAdminId = :aid', { aid: query.assignedAdminId });
+    if (query.search) {
+      qb.andWhere(
+        '(u.email ILIKE :q OR u.fullName ILIKE :q OR d.id ILIKE :q)',
+        { q: `%${query.search}%` },
+      );
+    }
+
+    qb.orderBy('d.createdAt', 'DESC')
+      .skip((page - 1) * perPage)
+      .take(perPage);
+
+    const [items, total] = await qb.getManyAndCount();
+    return { items, total, page, perPage };
   }
 }

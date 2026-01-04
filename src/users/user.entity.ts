@@ -14,6 +14,7 @@ import { ClientProfile } from './client-profile.entity';
 export enum UserRole {
   USER = 'user',
   ADMIN = 'admin',
+  SUPER_ADMIN = 'SUPER_ADMIN',
 }
 
 @Entity('users')

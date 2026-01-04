@@ -8,7 +8,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { UserRole } from '../users/user.entity'; // استيراد الدور
+import { UserRole } from '../users/user.entity';
 
 @Injectable()
 export class AdminGuard implements CanActivate {
@@ -22,24 +22,28 @@ export class AdminGuard implements CanActivate {
       throw new ForbiddenException('Authentication required.');
     }
 
-    // 1. تأكد من أن الأدوار موجودة ومصفوفة
+    // تأكد من وجود roles
     if (!user.roles || !Array.isArray(user.roles)) {
       throw new ForbiddenException(
         'Admin role required to access this resource.',
       );
     }
 
-    // 2. تنظيف الأدوار قبل التحقق (الخطوة الحاسمة)
+    // تنظيف الأدوار
     const cleanedRoles = user.roles.map((role) => role.trim());
 
-    // 3. التحقق من وجود دور المسؤول النظيف
-    const hasAdminRole = cleanedRoles.includes(UserRole.ADMIN);
+    // تحقق الأدوار
+    const isSuperAdmin = cleanedRoles.includes(UserRole.SUPER_ADMIN);
+    const isAdmin = cleanedRoles.includes(UserRole.ADMIN);
 
-    if (!hasAdminRole) {
+    if (!isAdmin && !isSuperAdmin) {
       throw new ForbiddenException(
         'Admin role required to access this resource.',
       );
     }
+
+    // نضيف العلم isSuperAdmin للـ request.user
+    user.isSuperAdmin = isSuperAdmin;
 
     return true;
   }

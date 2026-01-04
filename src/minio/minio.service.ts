@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
@@ -96,23 +97,6 @@ export class MinioService implements OnModuleInit {
     // this.ensureBucketExists();
   }
 
-  private async ensureBucketExists() {
-    try {
-      const exists = await this.minioClient.bucketExists(this.bucketName);
-      if (!exists) {
-        await this.minioClient.makeBucket(this.bucketName, 'us-east-1');
-        this.logger.log(
-          `MinIO Bucket '${this.bucketName}' created successfully.`,
-        );
-      } else {
-        this.logger.log(`MinIO Bucket '${this.bucketName}' already exists.`);
-      }
-    } catch (error) {
-      this.logger.error('Failed to ensure MinIO bucket exists', error);
-      throw new InternalServerErrorException('MinIO initialization failed.');
-    }
-  }
-
   /**
    * يرفع ملفًا إلى MinIO
    * @param objectName اسم الملف في MinIO
@@ -131,7 +115,6 @@ export class MinioService implements OnModuleInit {
         'Content-Type': mimeType,
       };
 
-      // 2. استدعاء الدالة بالشكل الصحيح مرة واحدة فقط
       await this.minioClient.putObject(
         this.bucketName,
         objectName,
@@ -168,20 +151,15 @@ export class MinioService implements OnModuleInit {
         secretKey: this.secretKey,
       });
 
-      // 2. استخدام العميل المؤقت لإنشاء الرابط.
-      // الرابط الناتج سيحتوي على التوقيع الصحيح والمضيف الصحيح (192.168.1.7:9000).
       const publicUrl = await publicUrlClient.presignedGetObject(
         this.bucketName,
         objectName,
         expiry,
       );
-
-      // (اختياري) طباعة للتأكد
       this.logger.log(`Final Public URL with correct signature: ${publicUrl}`);
 
       return publicUrl;
     } catch (error) {
-      // إذا ظهر خطأ 500 الآن، فإنه يعني أن مفاتيح الوصول السرية غير متطابقة.
       this.logger.error(
         `FATAL ERROR: Failed to get presigned URL. Root cause:`,
         error.message,
@@ -192,7 +170,14 @@ export class MinioService implements OnModuleInit {
       );
     }
   }
-
+  async objectExists(objectName: string): Promise<boolean> {
+    try {
+      await this.minioClient.statObject(this.bucketName, objectName);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
   async onModuleInit() {
     // *** تغيير الاسم إلى onModuleInit ***
     try {

@@ -61,7 +61,7 @@ export class QrBillController {
       };
 
       const dataForService = {
-        creditorAccount: 'CH37 8080 8001 0062 4300 3',
+        creditorAccount: 'CH65 3080 8001 0062 4300 3',
         amount: invoiceData.amount,
         currency: invoiceData.currency,
         debtor: {

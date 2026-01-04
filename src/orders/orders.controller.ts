@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
@@ -24,11 +25,15 @@ import { RolesGuard } from 'src/auth/roles.guard';
 import { UpdateStepDto } from './dto/update-step.dto';
 import { UserRole } from 'src/users/user.entity';
 import { AddStepCommentDto } from './dto/add-step-comment.dto';
+import { UsersService } from 'src/users/users.service';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly userService: UsersService,
+  ) {}
 
   @Post('draft')
   async createDraft(
@@ -74,7 +79,6 @@ export class OrdersController {
     @Param('declarationId') declarationId: string,
     @User() user: UserPayload, // استخدام الديكوراتور لجلب بيانات المستخدم
   ): Promise<TaxDeclaration> {
-    // يجب أن يكون لديك كيان User في مكان ما
     const userEntity = { id: user.sub } as any; // تحويل مؤقت لـ UserPayload إلى كيان User
     return this.ordersService.submitDraft(declarationId, userEntity);
   }
@@ -118,54 +122,76 @@ export class OrdersController {
     @Req() req: any,
     @User('sub') userId: string,
   ) {
+    // 1. Fetch the declaration
     const declaration = await this.ordersService.findDeclarationById(
       declarationId,
       ['clientProfile'],
     );
     if (!declaration) throw new NotFoundException('Declaration not found');
+
     const isAdmin = req.user.roles?.includes(UserRole.ADMIN);
 
-    // تأكد أن صاحب الطلب هو العميل
+    // 2. Check permissions
     if (declaration.clientProfile?.user?.id !== userId && !isAdmin) {
       throw new ForbiddenException(
         'Not allowed to comment on this declaration',
       );
     }
 
-    // declaration.steps هو JSON (مصفوفة) — تأكد من بنيته
+    // 3. Get the step
     const steps: any[] = Array.isArray(declaration.steps)
       ? declaration.steps
       : [];
-
     const stepIndex = steps.findIndex((s) => s.id === stepId);
-    if (stepIndex === -1) {
-      throw new NotFoundException('Step not found in declaration.steps');
-    }
+    if (stepIndex === -1) throw new NotFoundException('Step not found');
 
+    // 4. Add comment
     const now = new Date().toISOString();
     const existingMeta = steps[stepIndex].meta ?? {};
 
+    const newComment = { text: body.comment, by: userId, at: now };
     const newMeta = {
       ...existingMeta,
-      lastComment: { text: body.comment, by: userId, at: now },
-      commentHistory: [
-        ...(existingMeta.commentHistory ?? []),
-        { text: body.comment, by: userId, at: now },
-      ],
+      lastComment: newComment,
+      commentHistory: [...(existingMeta.commentHistory ?? []), newComment],
     };
 
-    // نحدّث الخطوة داخل المصفوفة
-    steps[stepIndex] = {
-      ...steps[stepIndex],
-      meta: newMeta,
-    };
-
-    // نكتب مرة واحدة الحقل steps (بما أنّه عمود jsonb)
+    steps[stepIndex] = { ...steps[stepIndex], meta: newMeta };
     declaration.steps = steps;
 
-    // نحفظ التغيير — استخدم الخدمة المناسبة عندك
+    // 5. Save updated steps
     await this.ordersService.saveDeclaration(declarationId, { steps });
 
-    return { ok: true, meta: newMeta };
+    // 6. Enrich comments with user info
+    const authorIds: string[] = Array.from(
+      new Set(newMeta.commentHistory.map((c) => c.by)),
+    );
+
+    // Make sure your UsersService has a method to return multiple users by IDs
+    const users = await this.userService.findByIds(authorIds);
+    console.log(users);
+
+    const userMap = Object.fromEntries(
+      users.map((u) => [
+        u.id,
+        { email: u.email, name: u.profile?.firstName ?? '' },
+      ]),
+    );
+
+    const enrichedHistory = newMeta.commentHistory.map((c) => ({
+      ...c,
+      byEmail: userMap[c.by]?.email ?? 'Unknown',
+      byName: userMap[c.by]?.name ?? null,
+    }));
+    console.log('authorIds:', authorIds);
+    console.log('users fetched:', users);
+    // 7. Return enriched comment history
+    return {
+      ok: true,
+      meta: {
+        ...newMeta,
+        commentHistory: enrichedHistory,
+      },
+    };
   }
 }

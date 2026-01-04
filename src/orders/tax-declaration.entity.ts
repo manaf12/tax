@@ -15,13 +15,13 @@ import { Payment } from 'src/payment/payment.entity';
 import { Step } from '../types/steps';
 
 export enum DeclarationStatus {
-  DRAFT = 'DRAFT', // مسودة (الحالة الأولية)
-  PENDING_PRICING = 'PENDING_PRICING', // بانتظار التسعير
-  PRICING_ACCEPTED = 'PRICING_ACCEPTED', // تم قبول التسعير
-  PENDING_PAYMENT = 'PENDING_PAYMENT', // بانتظار الدفع
-  IN_REVIEW = 'IN_REVIEW', // قيد المراجعة (بعد الدفع الناجح)
-  COMPLETED = 'COMPLETED', // مكتملة (بعد مراجعة المسؤول)
-  CANCELED = 'CANCELED', // ملغاة
+  DRAFT = 'DRAFT',
+  PENDING_PRICING = 'PENDING_PRICING',
+  PRICING_ACCEPTED = 'PRICING_ACCEPTED',
+  PENDING_PAYMENT = 'PENDING_PAYMENT',
+  IN_REVIEW = 'IN_REVIEW',
+  COMPLETED = 'COMPLETED',
+  CANCELED = 'CANCELED',
 }
 export enum OfferType {
   STANDARD = 'Standard',
@@ -52,7 +52,7 @@ export class TaxDeclaration {
   status: DeclarationStatus;
 
   @Column({ type: 'jsonb', nullable: true })
-  questionnaireSnapshot?: Record<string, any>; // تخزين ملخص/نسخة من الإجابات عند إنشاء الطلب
+  questionnaireSnapshot?: Record<string, any>;
 
   @OneToOne(() => Pricing, (pricing) => pricing.declaration, { nullable: true })
   pricing?: Pricing;
@@ -68,4 +68,21 @@ export class TaxDeclaration {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ type: 'uuid', nullable: true })
+  assignedAdminId?: string;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  assignedAt?: Date;
+
+  @Column({ type: 'uuid', nullable: true })
+  assignedById?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  assignmentHistory?: Array<{
+    adminId: string;
+    assignedById?: string;
+    assignedAt: string;
+    note?: string;
+  }>;
 }

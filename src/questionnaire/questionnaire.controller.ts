@@ -3,43 +3,29 @@ import {
   Post,
   Body,
   UseGuards,
-  // Get,
   NotFoundException,
   ValidationPipe,
   UsePipes,
+  Param,
+  Get,
 } from '@nestjs/common';
 import { QuestionnaireService } from './questionnaire.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { QuestionnaireResponse } from './questionnaire-response.entity';
 import { User } from 'src/auth/user.decorator';
-import { Param } from '@nestjs/common';
 import { FinalizeDto } from './dto/finalize.dto';
-// import { OfferType } from 'src/orders/tax-declaration.entity';
-// import { IsEnum } from 'class-validator';
-// import { Transform } from 'class-transformer';
+import { ClaimAnonymousDto } from './dto/claim-anonymous.dto';
 
-// class FinalizeDto {
-//   @Transform(({ value }) =>
-//     typeof value === 'string' ? value.toUpperCase() : value,
-//   )
-//   @IsEnum(OfferType, { message: 'Invalid offer selected' })
-//   offer: string;
-// }
-// class SaveStepDto {
-//   [key: string]: any; // لقبول أي حقل
-// }
-
-@UseGuards(JwtAuthGuard)
 @Controller('questionnaire')
 export class QuestionnaireController {
   constructor(private readonly questionnaireService: QuestionnaireService) {}
 
   @Post('start')
+  @UseGuards(JwtAuthGuard)
   async start(@User('sub') userId: string): Promise<QuestionnaireResponse> {
     const response = await this.questionnaireService.startQuestionnaire(userId);
-    if (!response) {
+    if (!response)
       throw new NotFoundException('Could not start questionnaire.');
-    }
     return response;
   }
 
@@ -47,27 +33,62 @@ export class QuestionnaireController {
   @UseGuards(JwtAuthGuard)
   async saveStep(
     @User('sub') userId: string,
-    @Param('questionnaireId') declarationId: string,
-    @Body() stepData: Record<string, any>, // <-- هنا
+    @Param('questionnaireId') questionnaireId: string,
+    @Body() stepData: Record<string, any>,
   ): Promise<QuestionnaireResponse> {
     const updated = await this.questionnaireService.saveStep(
-      declarationId,
-      userId,
+      questionnaireId,
       stepData,
+      userId,
     );
-    if (!updated) {
-      throw new NotFoundException(
-        'Questionnaire not found or could not be updated.',
-      );
-    }
+    if (!updated) throw new NotFoundException('Questionnaire not found.');
     return updated;
+  }
+
+  @Post(':questionnaireId/save-step-public')
+  async saveStepPublic(
+    @Param('questionnaireId') questionnaireId: string,
+    @Body() stepData: Record<string, any>,
+  ): Promise<QuestionnaireResponse> {
+    return await this.questionnaireService.saveStep(
+      questionnaireId,
+      stepData,
+      undefined,
+    );
+  }
+
+  @Post('create-standalone')
+  async createStandalone(): Promise<QuestionnaireResponse> {
+    return await this.questionnaireService.createStandaloneResponse();
   }
 
   @Post('submit-anonymous')
   async submitAnonymous(@Body() answers: any) {
-    const tempDeclaration =
+    const result =
       await this.questionnaireService.createTempDeclaration(answers);
-    return { declarationId: tempDeclaration.id };
+    return { declarationId: result.declaration.id, token: result.token };
+  }
+
+  @Post('claim-anonymous')
+  @UseGuards(JwtAuthGuard)
+  async claimAnonymous(
+    @User('sub') userId: string,
+    @Body() body: ClaimAnonymousDto,
+  ) {
+    const result = await this.questionnaireService.claimAnonymous(
+      body.token,
+      userId,
+    );
+
+    const questionnaireId = result.questionnaire.id;
+    const declarationId = result.declaration
+      ? result.declaration.id
+      : undefined;
+
+    return {
+      questionnaireId,
+      declarationId,
+    };
   }
 
   @Post(':declarationId/finalize')
@@ -78,17 +99,32 @@ export class QuestionnaireController {
     @Param('declarationId') declarationId: string,
     @Body() body: FinalizeDto,
   ): Promise<QuestionnaireResponse> {
-    const finalized = await this.questionnaireService.finalizeQuestionnaire(
+    return await this.questionnaireService.finalizeQuestionnaire(
       declarationId,
       userId,
       body.offer,
       body.billing,
     );
-    if (!finalized) {
-      throw new NotFoundException(
-        'Questionnaire not found or could not be finalized.',
+  }
+  @Post(':questionnaireId/submit-anonymous')
+  async submitAnonymousForResponse(
+    @Param('questionnaireId') questionnaireId: string,
+  ) {
+    const result =
+      await this.questionnaireService.createTempDeclarationFromResponse(
+        questionnaireId,
       );
-    }
-    return finalized;
+    return {
+      declarationId: result.declaration.id,
+      token: result.token,
+    };
+  }
+
+  @Get(':questionnaireId')
+  async getQuestionnaire(@Param('questionnaireId') questionnaireId: string) {
+    const resp =
+      await this.questionnaireService.getResponseById(questionnaireId);
+    if (!resp) throw new NotFoundException('Questionnaire not found');
+    return resp;
   }
 }

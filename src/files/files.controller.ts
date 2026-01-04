@@ -96,4 +96,37 @@ export class FilesController {
       documentType,
     );
   }
+  @Post(':declarationId/documents/:docType/missing')
+  async markMissing(
+    @Param('declarationId', ParseUUIDPipe) declarationId: string,
+    @Param('docType') docType: string,
+    @User('sub') userId: string,
+    @Body() body: { reason?: string },
+  ) {
+    await this.filesService.markDocumentMissing(
+      userId,
+      declarationId,
+      docType,
+      body?.reason,
+    );
+    return { ok: true };
+  }
+
+  // POST /files/:declarationId/step1/answers
+  @Post(':declarationId/step1/answers')
+  async saveStep1Answers(
+    @Param('declarationId', ParseUUIDPipe) declarationId: string,
+    @User('sub') userId: string,
+    @Body() body: { answers: Record<string, any> },
+  ) {
+    if (!body?.answers || typeof body.answers !== 'object') {
+      throw new BadRequestException('Answers payload is required.');
+    }
+    await this.filesService.saveStep1Answers(
+      userId,
+      declarationId,
+      body.answers,
+    );
+    return { ok: true };
+  }
 }

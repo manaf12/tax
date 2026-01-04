@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
@@ -5,6 +6,7 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -13,7 +15,7 @@ import { File as MulterFile } from 'multer';
 import { OrdersService } from 'src/orders/order.service';
 import { MinioService } from 'src/minio/minio.service';
 import { ClamAVService } from 'src/clamav/clamav.service';
-import { StepStatus } from 'src/types/steps'; // أو المسار الصحيح للمشروع
+import { Step, StepStatus } from 'src/types/steps'; // أو المسار الصحيح للمشروع
 const REQUIRED_DOCUMENT_TYPES = [
   'salary_certificate',
   'bank_statement',
@@ -25,6 +27,7 @@ const REQUIRED_DOCUMENT_TYPES = [
 ];
 import { UserRole } from 'src/users/user.entity';
 import { UsersService } from 'src/users/users.service';
+import { randomUUID } from 'crypto';
 @Injectable()
 export class FilesService {
   constructor(
@@ -37,8 +40,9 @@ export class FilesService {
   ) {}
 
   private async saveFileToStorage(file: MulterFile): Promise<string> {
-    const uniqueFileName = `${Date.now()}-${file.originalname}`;
-    const objectName = `files/${uniqueFileName}`;
+    // const uniqueFileName = `${Date.now()}-${file.originalname}`;
+    const ext = file.originalname.split('.').pop();
+    const objectName = `files/${Date.now()}-${randomUUID()}.${ext}`;
 
     await this.minioService.uploadFile(
       objectName,
@@ -159,7 +163,16 @@ export class FilesService {
       };
       await this.filesRepository.save(file);
     }
-
+    const exists = await this.minioService.objectExists(file.storagePath);
+    console.log('Object exists in MinIO:', exists, file.storagePath);
+    if (!exists) {
+      console.error(
+        `MinIO object missing: ${file.storagePath} for file id ${file.id}`,
+      );
+      throw new NotFoundException(
+        'File not found in storage (object missing).',
+      );
+    }
     return this.minioService.getPresignedUrl(file.storagePath);
   }
   private async checkAndCompleteStep1(
@@ -176,16 +189,42 @@ export class FilesService {
         declaration.files.map((f) => f.documentType),
       );
 
-      const allMandatoryDocsUploaded = REQUIRED_DOCUMENT_TYPES.every(
-        (docType) => uploadedDocTypes.has(docType),
+      const step = (declaration.steps ?? []).find(
+        (s) => s.id === 'documentsPreparation',
+      );
+      const missingMeta = step?.meta?.missingDocs ?? [];
+      const missingDocTypes = new Set(
+        missingMeta.map((m: any) => m.documentType),
       );
 
-      if (allMandatoryDocsUploaded) {
-        // 3. If yes, update the step status to COMPLETED
+      // أمثلة على أسئلة إلزامية في خطوة 1 (يمكن حفظها في snapshot عند إنشاء العرض أو ديناميكياً)
+      const requiredQuestions: string[] =
+        (declaration?.questionnaireSnapshot
+          ?.step1RequiredQuestions as string[]) ?? []; // لو فاضي => لا توجد أسئلة إلزامية
+
+      const step1Answers =
+        (declaration?.questionnaireSnapshot?.step1Answers as Record<
+          string,
+          any
+        >) ?? {};
+
+      const allMandatoryDocsHandled = REQUIRED_DOCUMENT_TYPES.every(
+        (docType) =>
+          uploadedDocTypes.has(docType) || missingDocTypes.has(docType),
+      );
+
+      const allRequiredQuestionsAnswered = requiredQuestions.every(
+        (q) =>
+          typeof step1Answers[q] !== 'undefined' &&
+          step1Answers[q] !== null &&
+          String(step1Answers[q]).trim().length > 0,
+      );
+
+      if (allMandatoryDocsHandled && allRequiredQuestionsAnswered) {
         await this.ordersService.updateStep(
           declarationId,
-          'documentsPreparation', // The ID for Step 1
-          StepStatus.DONE, // Use your enum for 'COMPLETED'
+          'documentsPreparation',
+          StepStatus.DONE,
           userId,
           { completedAt: new Date().toISOString() },
         );
@@ -282,5 +321,90 @@ export class FilesService {
 
     // 4. احفظ الملف في قاعدة البيانات
     return this.filesRepository.save(fileEntity);
+  }
+  async markDocumentMissing(
+    userId: string,
+    declarationId: string,
+    documentType: string,
+    reason?: string,
+  ): Promise<void> {
+    const declaration = await this.ordersService.findDeclarationById(
+      declarationId,
+      ['clientProfile', 'clientProfile.user', 'files'],
+    );
+    if (!declaration) throw new NotFoundException('Declaration not found');
+
+    const ownerUserId = declaration.clientProfile?.user?.id;
+    if (ownerUserId !== userId) {
+      throw new ForbiddenException('Access to this declaration is forbidden.');
+    }
+
+    const steps: Step[] = Array.isArray(declaration.steps)
+      ? declaration.steps
+      : this.ordersService.getDefaultSteps();
+
+    const idx = steps.findIndex((s) => s.id === 'documentsPreparation');
+    if (idx === -1) {
+      throw new BadRequestException('documentsPreparation step not found.');
+    }
+
+    const existingMeta = steps[idx].meta ?? {};
+    const existingMissing = existingMeta.missingDocs ?? [];
+
+    const now = new Date().toISOString();
+    const updatedMissing = [
+      ...existingMissing.filter((m: any) => m.documentType !== documentType),
+      {
+        documentType,
+        reason: reason ?? null,
+        declaredBy: userId,
+        declaredAt: now,
+      },
+    ];
+
+    steps[idx] = {
+      ...steps[idx],
+      meta: {
+        ...existingMeta,
+        missingDocs: updatedMissing,
+      },
+    };
+
+    // استخدم ordersService.saveDeclaration الذي لديك
+    await this.ordersService.saveDeclaration(declarationId, { steps });
+
+    // بعد التحديث حاول اكتمال الخطوة
+    await this.checkAndCompleteStep1(declarationId, userId);
+  }
+
+  // saveStep1Answers
+  async saveStep1Answers(
+    userId: string,
+    declarationId: string,
+    answers: Record<string, any>,
+  ): Promise<void> {
+    const declaration = await this.ordersService.findDeclarationById(
+      declarationId,
+      ['clientProfile'],
+    );
+    if (!declaration) throw new NotFoundException('Declaration not found');
+
+    const ownerUserId = declaration.clientProfile?.user?.id;
+    if (ownerUserId !== userId) {
+      throw new ForbiddenException('Access to this declaration is forbidden.');
+    }
+
+    const snapshot = declaration.questionnaireSnapshot ?? {};
+    snapshot.step1Answers = {
+      ...(snapshot.step1Answers ?? {}),
+      ...answers,
+    };
+
+    await this.ordersService.saveDeclaration(declarationId, {
+      questionnaireSnapshot: snapshot,
+    });
+
+    // حاول اكتمال الخطوة بعد حفظ الإجابات
+    await this.checkAndCompleteStep1(declarationId, userId);
   }
 }

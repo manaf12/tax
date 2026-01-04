@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -26,6 +27,7 @@ import { Step, StepStatus } from 'src/types/steps';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { UserRole } from 'src/users/user.entity';
 import { Roles } from 'src/auth/roles.decorator';
+import { AssignDeclarationsDto } from './dto/assign-declarations.dto';
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin/declarations')
 export class AdminController {
@@ -124,5 +126,33 @@ export class AdminController {
       declarationId,
       file,
     );
+  }
+  @Post('assign')
+  @Roles(UserRole.SUPER_ADMIN)
+  async assign(
+    @Body() body: AssignDeclarationsDto,
+    @User('sub') assignedById: string,
+  ) {
+    const { declarationIds, adminId, note } = body;
+    const updated = await this.adminService.assignDeclarations(
+      declarationIds,
+      adminId,
+      assignedById,
+      note,
+    );
+    return { updatedCount: updated.length, updated };
+  }
+  @Get('stats/steps')
+  getStepStats() {
+    return this.adminService.getStepCounters();
+  }
+  @Get('')
+  async list(@Query() q, @User() user) {
+    if (user.isSuperAdmin) {
+      return this.adminService.listDeclarations(q);
+    } else {
+      q.assignedAdminId = user.sub;
+      return this.adminService.listDeclarations(q);
+    }
   }
 }
