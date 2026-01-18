@@ -15,16 +15,7 @@ import { File as MulterFile } from 'multer';
 import { OrdersService } from 'src/orders/order.service';
 import { MinioService } from 'src/minio/minio.service';
 import { ClamAVService } from 'src/clamav/clamav.service';
-import { Step, StepStatus } from 'src/types/steps'; // أو المسار الصحيح للمشروع
-const REQUIRED_DOCUMENT_TYPES = [
-  'salary_certificate',
-  'bank_statement',
-  'pillar_3_certificate',
-  'property_deed_main',
-  'property_deed_rental',
-  'debt_statement',
-  'medical_expense_receipt',
-];
+import { Step, StepStatus } from 'src/types/steps';
 import { UserRole } from 'src/users/user.entity';
 import { UsersService } from 'src/users/users.service';
 import { randomUUID } from 'crypto';
@@ -40,7 +31,6 @@ export class FilesService {
   ) {}
 
   private async saveFileToStorage(file: MulterFile): Promise<string> {
-    // const uniqueFileName = `${Date.now()}-${file.originalname}`;
     const ext = file.originalname.split('.').pop();
     const objectName = `files/${Date.now()}-${randomUUID()}.${ext}`;
 
@@ -63,16 +53,22 @@ export class FilesService {
   ): Promise<File> {
     const declaration =
       await this.ordersService.findDeclarationById(declarationId);
-    if (!declaration) {
-      throw new NotFoundException('Declaration not found');
-    }
     const ownerUserId = declaration.clientProfile?.user?.id;
+
     if (!actorIsAdmin && ownerUserId !== userId) {
       throw new ForbiddenException('Access to this declaration is forbidden.');
     }
+    if (
+      !actorIsAdmin &&
+      (!deliveredForStep || deliveredForStep === 'documentsPreparation')
+    ) {
+      await this.ensureStep1Editable(declarationId, actorIsAdmin);
+      await this.reopenStep1IfConfirmed(declarationId, userId);
+      await this.ensureStep1Started(declarationId, userId);
+    }
+
     const storagePath = await this.saveFileToStorage(file);
 
-    // build meta including uploader info
     const savedMeta = {
       ...((file as any).meta ?? {}),
       deliveredForStep: deliveredForStep ?? null,
@@ -91,6 +87,7 @@ export class FilesService {
     });
 
     const savedFile = await this.filesRepository.save(fileEntity);
+
     if (!actorIsAdmin && deliveredForStep) {
       const decl = await this.ordersService.findDeclarationById(declarationId);
       const step = (decl.steps ?? []).find((s) => s.id === deliveredForStep);
@@ -104,9 +101,7 @@ export class FilesService {
       );
     }
 
-    if (!actorIsAdmin) {
-      await this.checkAndCompleteStep1(declarationId, userId);
-    } else {
+    if (actorIsAdmin) {
       if (deliveredForStep) {
         await this.ordersService.updateStep(
           declarationId,
@@ -128,6 +123,7 @@ export class FilesService {
 
     return savedFile;
   }
+
   async getFileUrl(fileId: string, requestingUserId: string): Promise<string> {
     const file = await this.filesRepository.findOne({
       where: { id: fileId },
@@ -175,77 +171,16 @@ export class FilesService {
     }
     return this.minioService.getPresignedUrl(file.storagePath);
   }
-  private async checkAndCompleteStep1(
-    declarationId: string,
-    userId: string,
-  ): Promise<void> {
-    try {
-      const declaration = await this.ordersService.findDeclarationById(
-        declarationId,
-        ['files'],
-      );
-
-      const uploadedDocTypes = new Set(
-        declaration.files.map((f) => f.documentType),
-      );
-
-      const step = (declaration.steps ?? []).find(
-        (s) => s.id === 'documentsPreparation',
-      );
-      const missingMeta = step?.meta?.missingDocs ?? [];
-      const missingDocTypes = new Set(
-        missingMeta.map((m: any) => m.documentType),
-      );
-
-      // أمثلة على أسئلة إلزامية في خطوة 1 (يمكن حفظها في snapshot عند إنشاء العرض أو ديناميكياً)
-      const requiredQuestions: string[] =
-        (declaration?.questionnaireSnapshot
-          ?.step1RequiredQuestions as string[]) ?? []; // لو فاضي => لا توجد أسئلة إلزامية
-
-      const step1Answers =
-        (declaration?.questionnaireSnapshot?.step1Answers as Record<
-          string,
-          any
-        >) ?? {};
-
-      const allMandatoryDocsHandled = REQUIRED_DOCUMENT_TYPES.every(
-        (docType) =>
-          uploadedDocTypes.has(docType) || missingDocTypes.has(docType),
-      );
-
-      const allRequiredQuestionsAnswered = requiredQuestions.every(
-        (q) =>
-          typeof step1Answers[q] !== 'undefined' &&
-          step1Answers[q] !== null &&
-          String(step1Answers[q]).trim().length > 0,
-      );
-
-      if (allMandatoryDocsHandled && allRequiredQuestionsAnswered) {
-        await this.ordersService.updateStep(
-          declarationId,
-          'documentsPreparation',
-          StepStatus.DONE,
-          userId,
-          { completedAt: new Date().toISOString() },
-        );
-        console.log(
-          `Step 1 for declaration ${declarationId} marked as COMPLETED.`,
-        );
-      }
-    } catch (error) {
-      console.error(
-        `Failed to check or complete Step 1 for declaration ${declarationId}`,
-        error,
-      );
-    }
-  }
-
   async uploadMultipleFiles(
     userId: string,
     declarationId: string,
     files: MulterFile[],
-    documentType: string, // <-- ACTION 4: Accept the new argument
+    documentType: string,
   ): Promise<{ saved: File[]; failed: { fileName: string; reason: any }[] }> {
+    await this.ensureStep1Editable(declarationId, false);
+    await this.reopenStep1IfConfirmed(declarationId, userId);
+    await this.ensureStep1Started(declarationId, userId);
+
     const concurrency = 4;
     const savedFiles: File[] = [];
     const failed: { fileName: string; reason: any }[] = [];
@@ -257,27 +192,25 @@ export class FilesService {
           this.uploadFile(userId, declarationId, file, documentType),
         ),
       );
+
       results.forEach((r, idx) => {
-        if (r.status === 'fulfilled') {
-          savedFiles.push(r.value);
-        } else {
+        if (r.status === 'fulfilled') savedFiles.push(r.value);
+        else
           failed.push({ fileName: batch[idx].originalname, reason: r.reason });
-        }
       });
     }
-    await this.checkAndCompleteStep1(declarationId, userId);
 
     try {
       const decl = await this.ordersService.findDeclarationById(declarationId);
       const existingStep = decl.steps?.find(
         (s) => s.id === 'documentsPreparation',
-      ); // Use the correct step ID
+      );
       const existingFileIds: string[] = existingStep?.meta?.files ?? [];
 
       await this.ordersService.updateStep(
         declarationId,
-        'documentsPreparation', // Use the correct step ID
-        existingStep?.status ?? StepStatus.PENDING, // Keep current status, `checkAndCompleteStep1` will override if needed
+        'documentsPreparation',
+        existingStep?.status ?? StepStatus.IN_PROGRESS, // keep current
         userId,
         { files: [...existingFileIds, ...savedFiles.map((f) => f.id)] },
       );
@@ -319,7 +252,6 @@ export class FilesService {
       },
     });
 
-    // 4. احفظ الملف في قاعدة البيانات
     return this.filesRepository.save(fileEntity);
   }
   async markDocumentMissing(
@@ -338,7 +270,7 @@ export class FilesService {
     if (ownerUserId !== userId) {
       throw new ForbiddenException('Access to this declaration is forbidden.');
     }
-
+    await this.ensureStep1Editable(declarationId, false);
     const steps: Step[] = Array.isArray(declaration.steps)
       ? declaration.steps
       : this.ordersService.getDefaultSteps();
@@ -370,14 +302,51 @@ export class FilesService {
       },
     };
 
-    // استخدم ordersService.saveDeclaration الذي لديك
     await this.ordersService.saveDeclaration(declarationId, { steps });
-
-    // بعد التحديث حاول اكتمال الخطوة
-    await this.checkAndCompleteStep1(declarationId, userId);
+    await this.reopenStep1IfConfirmed(declarationId, userId);
+    await this.ensureStep1Started(declarationId, userId);
   }
+  async unmarkDocumentMissing(
+    userId: string,
+    declarationId: string,
+    documentType: string,
+  ) {
+    const declaration = await this.ordersService.findDeclarationById(
+      declarationId,
+      ['clientProfile', 'clientProfile.user', 'files'],
+    );
+    if (!declaration) throw new NotFoundException('Declaration not found');
 
-  // saveStep1Answers
+    const ownerUserId = declaration.clientProfile?.user?.id;
+    if (ownerUserId !== userId)
+      throw new ForbiddenException('Access forbidden');
+    await this.ensureStep1Editable(declarationId, false); // ✅ ADD
+
+    const steps: Step[] = Array.isArray(declaration.steps)
+      ? declaration.steps
+      : this.ordersService.getDefaultSteps();
+
+    const idx = steps.findIndex((s) => s.id === 'documentsPreparation');
+    if (idx === -1)
+      throw new BadRequestException('documentsPreparation step not found.');
+
+    const meta = steps[idx].meta ?? {};
+    const existingMissing = meta.missingDocs ?? [];
+
+    steps[idx] = {
+      ...steps[idx],
+      meta: {
+        ...meta,
+        missingDocs: existingMissing.filter(
+          (m: any) => m.documentType !== documentType,
+        ),
+      },
+    };
+
+    await this.ordersService.saveDeclaration(declarationId, { steps });
+    await this.reopenStep1IfConfirmed(declarationId, userId);
+    await this.ensureStep1Started(declarationId, userId);
+  }
   async saveStep1Answers(
     userId: string,
     declarationId: string,
@@ -393,7 +362,7 @@ export class FilesService {
     if (ownerUserId !== userId) {
       throw new ForbiddenException('Access to this declaration is forbidden.');
     }
-
+    await this.ensureStep1Editable(declarationId, false);
     const snapshot = declaration.questionnaireSnapshot ?? {};
     snapshot.step1Answers = {
       ...(snapshot.step1Answers ?? {}),
@@ -404,7 +373,113 @@ export class FilesService {
       questionnaireSnapshot: snapshot,
     });
 
-    // حاول اكتمال الخطوة بعد حفظ الإجابات
-    await this.checkAndCompleteStep1(declarationId, userId);
+    await this.reopenStep1IfConfirmed(declarationId, userId);
+    await this.ensureStep1Started(declarationId, userId);
+  }
+  async getStep1Answers(
+    userId: string,
+    roles: string[],
+    declarationId: string,
+  ) {
+    const declaration = await this.ordersService.findDeclarationById(
+      declarationId,
+      ['clientProfile', 'clientProfile.user'],
+    );
+    if (!declaration) throw new NotFoundException('Declaration not found');
+
+    const isAdmin = roles?.includes('admin');
+
+    // admin allowed
+    if (!isAdmin) {
+      const ownerUserId = declaration.clientProfile?.user?.id;
+      if (ownerUserId !== userId) throw new ForbiddenException('Forbidden');
+    }
+
+    return declaration.questionnaireSnapshot?.step1Answers ?? {};
+  }
+
+  async deleteFile(userId: string, fileId: string): Promise<void> {
+    const file = await this.filesRepository.findOne({
+      where: { id: fileId },
+      relations: [
+        'declaration',
+        'declaration.clientProfile',
+        'declaration.clientProfile.user',
+      ],
+    });
+
+    if (!file) throw new NotFoundException('File not found.');
+
+    const ownerUserId = file.declaration?.clientProfile?.user?.id;
+    if (ownerUserId !== userId) {
+      throw new ForbiddenException('Not allowed to delete this file.');
+    }
+    await this.ensureStep1Editable(file.declaration.id, false);
+    if (file.storagePath) {
+      await this.minioService.removeFile(file.storagePath);
+    }
+    await this.filesRepository.remove(file);
+    await this.reopenStep1IfConfirmed(file.declaration.id, userId);
+    await this.ensureStep1Started(file.declaration.id, userId);
+  }
+  private async reopenStep1IfConfirmed(
+    declarationId: string,
+    actorUserId: string,
+  ) {
+    const decl = await this.ordersService.findDeclarationById(declarationId);
+    const step = (decl.steps ?? []).find(
+      (s: any) => s.id === 'documentsPreparation',
+    );
+    if (!step) return;
+
+    if (step.status === StepStatus.DONE) {
+      await this.ordersService.updateStep(
+        declarationId,
+        'documentsPreparation',
+        StepStatus.IN_PROGRESS,
+        actorUserId,
+        {
+          confirmedAt: null,
+          confirmedBy: null,
+          reopenedAt: new Date().toISOString(),
+          reopenedBy: actorUserId,
+        },
+      );
+    }
+  }
+  private async ensureStep1Started(declarationId: string, actorUserId: string) {
+    const decl = await this.ordersService.findDeclarationById(declarationId);
+    const step = (decl.steps ?? []).find(
+      (s: any) => s.id === 'documentsPreparation',
+    );
+    if (!step) return;
+
+    if (step.status === StepStatus.PENDING) {
+      await this.ordersService.updateStep(
+        declarationId,
+        'documentsPreparation',
+        StepStatus.IN_PROGRESS,
+        actorUserId,
+        {
+          startedAt: new Date().toISOString(),
+          startedBy: actorUserId,
+        },
+      );
+    }
+  }
+  private async ensureStep1Editable(
+    declarationId: string,
+    actorIsAdmin: boolean,
+  ) {
+    if (actorIsAdmin) return; // admin always allowed
+    const decl = await this.ordersService.findDeclarationById(declarationId);
+    const reviewStep = (decl.steps ?? []).find(
+      (s: any) => s.id === 'documentsReview',
+    );
+    if (reviewStep?.status === StepStatus.DONE) {
+      throw new ForbiddenException(
+        'Step 1 is locked because documents were approved.',
+      );
+    }
   }
 }

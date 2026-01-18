@@ -197,4 +197,14 @@ export class MinioService implements OnModuleInit {
       );
     }
   }
+  async removeFile(objectName: string): Promise<void> {
+    try {
+      await this.minioClient.removeObject(this.bucketName, objectName);
+    } catch (error) {
+      this.logger.error(`Failed to remove object ${objectName}`, error);
+      throw new InternalServerErrorException(
+        'Failed to delete file from storage.',
+      );
+    }
+  }
 }

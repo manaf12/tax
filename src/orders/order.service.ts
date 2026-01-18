@@ -606,4 +606,77 @@ export class OrdersService {
       return updated;
     });
   }
+  async confirmStep1(declarationId: string, userId: string) {
+    const decl = await this.findDeclarationById(declarationId, [
+      'clientProfile',
+      'clientProfile.user',
+      'files',
+    ]);
+
+    if (decl.clientProfile.user.id !== userId) {
+      throw new ForbiddenException('You do not own this declaration.');
+    }
+
+    const steps: Step[] = Array.isArray(decl.steps)
+      ? decl.steps
+      : this.getDefaultSteps();
+    const step = steps.find((s) => s.id === 'documentsPreparation');
+    if (!step)
+      throw new BadRequestException('documentsPreparation step not found.');
+
+    const uploadedDocTypes = new Set(
+      (decl.files ?? []).map((f: any) => f.documentType),
+    );
+    const missingMeta = step.meta?.missingDocs ?? [];
+    const missingDocTypes = new Set(
+      (missingMeta as any[]).map((m) => m.documentType),
+    );
+
+    const REQUIRED_DOCUMENT_TYPES = [
+      'salary_certificate',
+      'bank_statement',
+      'pillar_3_certificate',
+      'property_deed_main',
+      'property_deed_rental',
+      'debt_statement',
+      'medical_expense_receipt',
+    ];
+
+    const requiredQuestions: string[] =
+      (decl?.questionnaireSnapshot?.step1RequiredQuestions as string[]) ?? [];
+
+    const step1Answers =
+      (decl?.questionnaireSnapshot?.step1Answers as Record<string, any>) ?? {};
+
+    const missingDocs = REQUIRED_DOCUMENT_TYPES.filter(
+      (docType) =>
+        !uploadedDocTypes.has(docType) && !missingDocTypes.has(docType),
+    );
+
+    const missingQuestions = requiredQuestions.filter((q) => {
+      const v = step1Answers[q];
+      return v === undefined || v === null || String(v).trim().length === 0;
+    });
+
+    if (missingDocs.length || missingQuestions.length) {
+      throw new BadRequestException({
+        message: 'Step 1 is not ready to be confirmed.',
+        missingDocs,
+        missingQuestions,
+      });
+    }
+
+    await this.updateStep(
+      declarationId,
+      'documentsPreparation',
+      StepStatus.DONE,
+      userId,
+      {
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: userId,
+      },
+    );
+
+    return { ok: true };
+  }
 }

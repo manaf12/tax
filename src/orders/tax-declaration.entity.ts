@@ -7,6 +7,7 @@ import {
   OneToOne,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 import { ClientProfile } from '../users/client-profile.entity';
 import { File } from '../files/file.entity';
@@ -28,7 +29,14 @@ export enum OfferType {
   PREMIUM = 'Premium',
   CONFORT = 'Confort',
 }
-
+@Index(
+  'UQ_tax_declarations_questionnaireResponseId',
+  ['questionnaireResponseId'],
+  {
+    unique: true,
+    where: `"questionnaireResponseId" IS NOT NULL`,
+  },
+)
 @Entity('tax_declarations')
 export class TaxDeclaration {
   @PrimaryGeneratedColumn('uuid')
@@ -53,7 +61,8 @@ export class TaxDeclaration {
 
   @Column({ type: 'jsonb', nullable: true })
   questionnaireSnapshot?: Record<string, any>;
-
+  @Column({ type: 'uuid', nullable: true })
+  questionnaireResponseId?: string;
   @OneToOne(() => Pricing, (pricing) => pricing.declaration, { nullable: true })
   pricing?: Pricing;
 

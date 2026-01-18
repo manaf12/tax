@@ -13,6 +13,7 @@ import {
   BadRequestException,
   UploadedFiles,
   Body,
+  Delete,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { FilesService } from './files.service';
@@ -127,6 +128,40 @@ export class FilesController {
       declarationId,
       body.answers,
     );
+    return { ok: true };
+  }
+  @Delete(':declarationId/documents/:docType/missing')
+  async unmarkMissing(
+    @Param('declarationId', ParseUUIDPipe) declarationId: string,
+    @Param('docType') docType: string,
+    @User('sub') userId: string,
+  ) {
+    await this.filesService.unmarkDocumentMissing(
+      userId,
+      declarationId,
+      docType,
+    );
+    return { ok: true };
+  }
+  @Get(':declarationId/step1/answers')
+  async getStep1Answers(
+    @Param('declarationId', ParseUUIDPipe) declarationId: string,
+    @User('sub') userId: string,
+    @User('roles') roles: string[] = [],
+  ) {
+    const answers = await this.filesService.getStep1Answers(
+      userId,
+      roles,
+      declarationId,
+    );
+    return { answers };
+  }
+  @Delete(':fileId')
+  async deleteFile(
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @User('sub') userId: string,
+  ) {
+    await this.filesService.deleteFile(userId, fileId);
     return { ok: true };
   }
 }

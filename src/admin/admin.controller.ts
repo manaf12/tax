@@ -1,3 +1,6 @@
+import { AdminGuard } from './../auth/admin.guard';
+import { JwtAuthGuard } from './../auth/jwt-auth.guard';
+import { UsersService } from 'src/users/users.service';
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
@@ -14,10 +17,8 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminService } from './admin.service';
 import { TaxDeclaration } from '../orders/tax-declaration.entity';
-import { AdminGuard } from 'src/auth/admin.guard';
 import { User } from '../auth/user.decorator';
 import { FilesService } from 'src/files/files.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -34,6 +35,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly filesService: FilesService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Get('paid')
@@ -128,6 +130,7 @@ export class AdminController {
     );
   }
   @Post('assign')
+  @UseGuards(JwtAuthGuard, AdminGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async assign(
     @Body() body: AssignDeclarationsDto,
@@ -151,8 +154,15 @@ export class AdminController {
     if (user.isSuperAdmin) {
       return this.adminService.listDeclarations(q);
     } else {
+      console.log('Admin accessing their own declarations');
       q.assignedAdminId = user.sub;
       return this.adminService.listDeclarations(q);
     }
+  }
+  @Get('meta/admins')
+  @UseGuards(JwtAuthGuard, AdminGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  async listAdmins() {
+    return this.usersService.listAdmins();
   }
 }

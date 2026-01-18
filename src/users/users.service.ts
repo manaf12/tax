@@ -109,4 +109,20 @@ export class UsersService {
 
     return this.clientProfileRepository.save(profile);
   }
+  async listAdmins(): Promise<
+    Array<{ id: string; email: string; roles: UserRole[] }>
+  > {
+    const users = await this.usersRepository
+      .createQueryBuilder('u')
+      .select(['u.id', 'u.email', 'u.roles'])
+      // roles stored as comma-separated string: "user,admin"
+      .where(`u.roles LIKE :admin OR u.roles LIKE :super`, {
+        admin: `%${UserRole.ADMIN}%`,
+        super: `%${UserRole.SUPER_ADMIN}%`,
+      })
+      .orderBy('u.email', 'ASC')
+      .getMany();
+
+    return users.map((u) => ({ id: u.id, email: u.email, roles: u.roles }));
+  }
 }

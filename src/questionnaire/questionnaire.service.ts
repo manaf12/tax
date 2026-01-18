@@ -45,26 +45,39 @@ export class QuestionnaireService {
   /**
    * @param userId
    */
-  async startQuestionnaire(userId: string): Promise<QuestionnaireResponse> {
+  async startQuestionnaire(
+    userId: string,
+    forceNew = false,
+  ): Promise<QuestionnaireResponse> {
     const user = await this.usersService.findOneWithProfile(userId);
     if (!user || !user.profile) {
       throw new NotFoundException('User or client profile not found.');
     }
 
-    let response = await this.responseRepository.findOne({
-      where: { clientProfile: { id: user.profile.id }, status: 'IN_PROGRESS' },
-      relations: ['clientProfile'],
-    });
-
-    if (!response) {
-      response = this.responseRepository.create({
-        clientProfile: user.profile,
-        status: 'IN_PROGRESS',
-        data: {},
+    if (!forceNew) {
+      const existing = await this.responseRepository.findOne({
+        where: {
+          clientProfile: { id: user.profile.id },
+          status: 'IN_PROGRESS',
+        },
+        relations: ['clientProfile'],
       });
-      response = await this.responseRepository.save(response);
+      if (existing) return existing;
     }
 
+    // (اختياري لكن مهم) اقفلي أي IN_PROGRESS قديم
+    await this.responseRepository.update(
+      { clientProfile: { id: user.profile.id }, status: 'IN_PROGRESS' },
+      { status: 'ABANDONED' as any }, // أو أي status عندك بدل ABANDONED
+    );
+
+    let response = this.responseRepository.create({
+      clientProfile: user.profile,
+      status: 'IN_PROGRESS',
+      data: {},
+    });
+
+    response = await this.responseRepository.save(response);
     return response;
   }
 
@@ -173,7 +186,7 @@ export class QuestionnaireService {
       const clientProfile = response.clientProfile as ClientProfile | undefined;
 
       let declaration = await this.declarationsRepository.findOne({
-        where: { questionnaireSnapshot: { id: questionnaireId } },
+        where: { questionnaireResponseId: savedResponse.id },
       });
 
       if (!declaration) {
@@ -182,10 +195,15 @@ export class QuestionnaireService {
           offer: offerValue,
           status: DeclarationStatus.DRAFT,
           questionnaireSnapshot: savedResponse.data,
+          questionnaireResponseId: savedResponse.id,
         });
-        await this.declarationsRepository.save(declaration);
+      } else {
+        declaration.clientProfile = clientProfile!;
+        declaration.offer = offerValue;
+        declaration.questionnaireSnapshot = savedResponse.data;
       }
 
+      declaration = await this.declarationsRepository.save(declaration);
       const normalized = {
         isMarried: savedResponse.data.maritalStatus === 'married',
         numKids: Number(savedResponse.data.childrenCount ?? 0),
@@ -246,6 +264,7 @@ export class QuestionnaireService {
     const newDecl = this.declarationsRepository.create({
       status: DeclarationStatus.PENDING_PRICING,
       questionnaireSnapshot: savedResponse.data,
+      questionnaireResponseId: savedResponse.id,
     } as Partial<TaxDeclaration>);
     const savedDecl = await this.declarationsRepository.save(newDecl);
 
@@ -279,22 +298,19 @@ export class QuestionnaireService {
       relations: ['clientProfile'],
     });
 
-    if (!response) {
-      throw new NotFoundException('Invalid or expired token');
-    }
-
-    if (!response.isAnonymous) {
+    if (!response) throw new NotFoundException('Invalid or expired token');
+    if (!response.isAnonymous)
       throw new BadRequestException('Questionnaire already claimed');
-    }
-
     if (
       response.anonymousExpiresAt &&
       response.anonymousExpiresAt < new Date()
     ) {
       throw new BadRequestException('Token expired');
     }
+
     const clientProfile =
       await this.usersService.getOrCreateClientProfile(userId);
+
     response.clientProfile = clientProfile;
     response.isAnonymous = false;
     response.anonymousToken = undefined;
@@ -302,17 +318,20 @@ export class QuestionnaireService {
 
     const savedResponse = await this.responseRepository.save(response);
 
-    await this.declarationsRepository.update(
-      { questionnaireSnapshot: savedResponse.data },
-      { clientProfile },
-    );
-
+    // Find declaration by questionnaireResponseId (stable)
     const declaration = await this.declarationsRepository.findOne({
-      where: { questionnaireSnapshot: savedResponse.data },
+      where: { questionnaireResponseId: savedResponse.id },
     });
+
+    // لو موجود: اربطيه بالمستخدم
+    if (declaration) {
+      declaration.clientProfile = clientProfile;
+      await this.declarationsRepository.save(declaration);
+    }
 
     return { questionnaire: savedResponse, declaration: declaration ?? null };
   }
+
   async createTempDeclarationFromResponse(questionnaireId: string): Promise<{
     declaration: TaxDeclaration;
     token: string;
@@ -320,7 +339,6 @@ export class QuestionnaireService {
     const response = await this.responseRepository.findOne({
       where: { id: questionnaireId },
     });
-
     if (!response) throw new NotFoundException('Questionnaire not found.');
 
     const token = randomUUID();
@@ -332,11 +350,23 @@ export class QuestionnaireService {
     response.status = 'COMPLETED';
     await this.responseRepository.save(response);
 
-    const newDecl = this.declarationsRepository.create({
-      status: DeclarationStatus.PENDING_PRICING,
-      questionnaireSnapshot: response.data,
-    } as Partial<TaxDeclaration>);
-    const savedDecl = await this.declarationsRepository.save(newDecl);
+    // IMPORTANT: upsert declaration by questionnaireResponseId
+    let decl = await this.declarationsRepository.findOne({
+      where: { questionnaireResponseId: response.id },
+    });
+
+    if (!decl) {
+      decl = this.declarationsRepository.create({
+        status: DeclarationStatus.PENDING_PRICING,
+        questionnaireSnapshot: response.data,
+        questionnaireResponseId: response.id,
+      } as Partial<TaxDeclaration>);
+    } else {
+      decl.questionnaireSnapshot = response.data;
+      decl.status = DeclarationStatus.PENDING_PRICING;
+    }
+
+    const savedDecl = await this.declarationsRepository.save(decl);
 
     try {
       await this.ordersService.initStepsIfEmpty(savedDecl.id);

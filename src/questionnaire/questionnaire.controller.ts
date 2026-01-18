@@ -8,6 +8,7 @@ import {
   UsePipes,
   Param,
   Get,
+  Query,
 } from '@nestjs/common';
 import { QuestionnaireService } from './questionnaire.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -22,11 +23,14 @@ export class QuestionnaireController {
 
   @Post('start')
   @UseGuards(JwtAuthGuard)
-  async start(@User('sub') userId: string): Promise<QuestionnaireResponse> {
-    const response = await this.questionnaireService.startQuestionnaire(userId);
-    if (!response)
-      throw new NotFoundException('Could not start questionnaire.');
-    return response;
+  async start(
+    @User('sub') userId: string,
+    @Query('forceNew') forceNew?: string,
+  ) {
+    return this.questionnaireService.startQuestionnaire(
+      userId,
+      forceNew === 'true',
+    );
   }
 
   @Post(':questionnaireId/save-step')
