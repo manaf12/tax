@@ -396,7 +396,9 @@ export class OrdersService {
     const decl = await this.declarationsRepository.findOne({
       where: { id: declarationId },
     });
+
     if (!decl) throw new NotFoundException('Declaration not found');
+
     const steps: Step[] = Array.isArray(decl.steps)
       ? decl.steps
       : this.getDefaultSteps();
@@ -404,6 +406,16 @@ export class OrdersService {
     if (idx === -1) {
       throw new BadRequestException('Invalid step id');
     }
+
+    // Prevent reverting Step 1 to anything other than DONE
+    if (
+      stepId === 'documentsPreparation' &&
+      steps[idx].status === StepStatus.DONE
+    ) {
+      // Do not change status if it is already DONE
+      return decl; // Return the declaration as is if it's already DONE
+    }
+
     steps[idx] = {
       ...steps[idx],
       status,
@@ -414,6 +426,7 @@ export class OrdersService {
         ...(extra ?? {}),
       },
     };
+
     const inProgress = steps.find((s) => s.status === StepStatus.IN_PROGRESS);
     const firstNotDone = steps.find((s) => s.status !== StepStatus.DONE);
     decl.currentStep = inProgress

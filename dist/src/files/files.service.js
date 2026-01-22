@@ -72,11 +72,12 @@ let FilesService = class FilesService {
             meta: savedMeta,
         });
         const savedFile = await this.filesRepository.save(fileEntity);
-        if (!actorIsAdmin && deliveredForStep) {
-            const decl = await this.ordersService.findDeclarationById(declarationId);
-            const step = (decl.steps ?? []).find((s) => s.id === deliveredForStep);
-            const existingFiles = step?.meta?.files ?? [];
-            await this.ordersService.updateStep(declarationId, deliveredForStep, step?.status ?? steps_1.StepStatus.PENDING, userId, { files: [...existingFiles, savedFile.id] });
+        const steps = Array.isArray(declaration.steps)
+            ? declaration.steps
+            : this.ordersService.getDefaultSteps();
+        const step = steps.find((s) => s.id === 'documentsPreparation');
+        if (step && step.status === steps_1.StepStatus.DONE) {
+            return savedFile;
         }
         if (actorIsAdmin) {
             if (deliveredForStep) {
@@ -238,9 +239,15 @@ let FilesService = class FilesService {
                 missingDocs: existingMissing.filter((m) => m.documentType !== documentType),
             },
         };
-        await this.ordersService.saveDeclaration(declarationId, { steps });
-        await this.reopenStep1IfConfirmed(declarationId, userId);
-        await this.ensureStep1Started(declarationId, userId);
+        const currentStepStatus = steps[idx].status;
+        if (currentStepStatus === steps_1.StepStatus.DONE) {
+            await this.ordersService.saveDeclaration(declarationId, { steps });
+        }
+        else {
+            steps[idx].status = steps_1.StepStatus.DONE;
+            await this.ordersService.saveDeclaration(declarationId, { steps });
+        }
+        return { ok: true };
     }
     async saveStep1Answers(userId, declarationId, answers) {
         const declaration = await this.ordersService.findDeclarationById(declarationId, ['clientProfile']);

@@ -88,19 +88,18 @@ export class FilesService {
 
     const savedFile = await this.filesRepository.save(fileEntity);
 
-    if (!actorIsAdmin && deliveredForStep) {
-      const decl = await this.ordersService.findDeclarationById(declarationId);
-      const step = (decl.steps ?? []).find((s) => s.id === deliveredForStep);
-      const existingFiles = step?.meta?.files ?? [];
-      await this.ordersService.updateStep(
-        declarationId,
-        deliveredForStep,
-        step?.status ?? StepStatus.PENDING,
-        userId,
-        { files: [...existingFiles, savedFile.id] },
-      );
+    // If the step is already DONE, do not change the status back to IN_PROGRESS
+    const steps: Step[] = Array.isArray(declaration.steps)
+      ? declaration.steps
+      : this.ordersService.getDefaultSteps();
+
+    const step = steps.find((s) => s.id === 'documentsPreparation');
+    if (step && step.status === StepStatus.DONE) {
+      // Do not change status if step is already DONE
+      return savedFile;
     }
 
+    // If actor is admin, mark the step as in-progress
     if (actorIsAdmin) {
       if (deliveredForStep) {
         await this.ordersService.updateStep(
@@ -320,6 +319,7 @@ export class FilesService {
     const ownerUserId = declaration.clientProfile?.user?.id;
     if (ownerUserId !== userId)
       throw new ForbiddenException('Access forbidden');
+
     await this.ensureStep1Editable(declarationId, false); // ✅ ADD
 
     const steps: Step[] = Array.isArray(declaration.steps)
@@ -333,6 +333,7 @@ export class FilesService {
     const meta = steps[idx].meta ?? {};
     const existingMissing = meta.missingDocs ?? [];
 
+    // Remove the document from the missing list
     steps[idx] = {
       ...steps[idx],
       meta: {
@@ -343,10 +344,21 @@ export class FilesService {
       },
     };
 
-    await this.ordersService.saveDeclaration(declarationId, { steps });
-    await this.reopenStep1IfConfirmed(declarationId, userId);
-    await this.ensureStep1Started(declarationId, userId);
+    // If step is already DONE, leave it as DONE
+    const currentStepStatus = steps[idx].status;
+    if (currentStepStatus === StepStatus.DONE) {
+      // Do not change the status if it's already DONE
+      await this.ordersService.saveDeclaration(declarationId, { steps });
+    } else {
+      // If for some reason the status was not DONE, set it back to DONE
+      steps[idx].status = StepStatus.DONE;
+      await this.ordersService.saveDeclaration(declarationId, { steps });
+    }
+
+    // Return a response indicating that the document was unmarked as missing, but status remains DONE
+    return { ok: true };
   }
+
   async saveStep1Answers(
     userId: string,
     declarationId: string,

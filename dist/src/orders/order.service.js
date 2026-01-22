@@ -284,6 +284,10 @@ let OrdersService = class OrdersService {
         if (idx === -1) {
             throw new common_1.BadRequestException('Invalid step id');
         }
+        if (stepId === 'documentsPreparation' &&
+            steps[idx].status === steps_1.StepStatus.DONE) {
+            return decl;
+        }
         steps[idx] = {
             ...steps[idx],
             status,

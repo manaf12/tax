@@ -24,7 +24,9 @@ export declare class FilesService {
     }>;
     uploadDraftForReviewStep(adminId: string, declarationId: string, file: MulterFile): Promise<File>;
     markDocumentMissing(userId: string, declarationId: string, documentType: string, reason?: string): Promise<void>;
-    unmarkDocumentMissing(userId: string, declarationId: string, documentType: string): Promise<void>;
+    unmarkDocumentMissing(userId: string, declarationId: string, documentType: string): Promise<{
+        ok: boolean;
+    }>;
     saveStep1Answers(userId: string, declarationId: string, answers: Record<string, any>): Promise<void>;
     getStep1Answers(userId: string, roles: string[], declarationId: string): Promise<any>;
     deleteFile(userId: string, fileId: string): Promise<void>;
