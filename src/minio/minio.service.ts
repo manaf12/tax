@@ -42,8 +42,10 @@ export class MinioService implements OnModuleInit {
     const endPoint = this.configService.get<string>('MINIO_ENDPOINT');
     const portRaw = this.configService.get<string>('MINIO_PORT'); // قراءة كـ string فقط
     const useSSLRaw = this.configService.get<string>('MINIO_USE_SSL'); // قراءة كـ string فقط
-    const accessKey = this.configService.get<string>('MINIO_ACCESS_KEY');
-    const secretKey = this.configService.get<string>('MINIO_SECRET_KEY');
+    // const accessKey = this.configService.get<string>('MINIO_ACCESS_KEY');
+    // const secretKey = this.configService.get<string>('MINIO_SECRET_KEY');
+    const accessKey = this.configService.get<string>('MINIO_ROOT_USER');
+    const secretKey = this.configService.get<string>('MINIO_ROOT_PASSWORD');
 
     if (!endPoint || !portRaw || !accessKey || !secretKey || !useSSLRaw) {
       throw new InternalServerErrorException(
