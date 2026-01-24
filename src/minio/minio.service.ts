@@ -17,14 +17,17 @@ export class MinioService implements OnModuleInit {
 
   // الخصائص العامة (للمتصفح)
   private readonly publicHost: string;
-  private readonly publicPort: number; // يجب أن يكون رقمًا
+  private readonly publicPort: number;
+  private readonly publicUseSSL: boolean; // ✅ NEW
 
   // الخصائص السرية (للتوقيع)
   private readonly accessKey: string;
   private readonly secretKey: string;
+
+  // خصائص الاتصال الداخلي
   private readonly useSSL: boolean;
-  private readonly internalEndpoint: string; // جديد
-  private readonly internalPort: number; // جديد
+  private readonly internalEndpoint: string;
+  private readonly internalPort: number;
 
   constructor(private configService: ConfigService) {
     // --- 1. قراءة وتخزين اسم الـ Bucket ---
@@ -40,10 +43,8 @@ export class MinioService implements OnModuleInit {
 
     // --- 2. قراءة المتغيرات الداخلية والسرية والتحقق منها ---
     const endPoint = this.configService.get<string>('MINIO_ENDPOINT');
-    const portRaw = this.configService.get<string>('MINIO_PORT'); // قراءة كـ string فقط
-    const useSSLRaw = this.configService.get<string>('MINIO_USE_SSL'); // قراءة كـ string فقط
-    // const accessKey = this.configService.get<string>('MINIO_ACCESS_KEY');
-    // const secretKey = this.configService.get<string>('MINIO_SECRET_KEY');
+    const portRaw = this.configService.get<string>('MINIO_PORT');
+    const useSSLRaw = this.configService.get<string>('MINIO_USE_SSL');
     const accessKey = this.configService.get<string>('MINIO_ROOT_USER');
     const secretKey = this.configService.get<string>('MINIO_ROOT_PASSWORD');
 
@@ -54,21 +55,23 @@ export class MinioService implements OnModuleInit {
     }
 
     // --- 3. تحويل وتخزين القيم الداخلية ---
-    const port = parseInt(portRaw, 10); // تحويل آمن بعد التحقق
+    const port = parseInt(portRaw, 10);
     if (Number.isNaN(port)) {
       throw new InternalServerErrorException(
         'MINIO_PORT is not a valid number',
       );
     }
-    this.internalEndpoint = endPoint; // تخزين نقطة النهاية الداخلية
-    this.internalPort = port; // تخزين المنفذ الداخلي
-    this.useSSL = ['true', '1'].includes(useSSLRaw); // تحويل آمن
+
+    this.internalEndpoint = endPoint;
+    this.internalPort = port;
+    this.useSSL = ['true', '1'].includes(useSSLRaw);
     this.accessKey = accessKey;
     this.secretKey = secretKey;
+
     // --- 4. إنشاء العميل الداخلي ---
     this.minioClient = new Client({
-      endPoint: this.internalEndpoint, // استخدام القيمة المخزنة
-      port: this.internalPort, // استخدام القيمة المخزنة
+      endPoint: this.internalEndpoint,
+      port: this.internalPort,
       useSSL: this.useSSL,
       accessKey: this.accessKey,
       secretKey: this.secretKey,
@@ -77,7 +80,13 @@ export class MinioService implements OnModuleInit {
     // --- 5. قراءة وتخزين الإعدادات العامة (للمتصفح) ---
     const publicHostFromEnv =
       this.configService.get<string>('MINIO_PUBLIC_HOST');
-    const publicPortRaw = this.configService.get<string>('MINIO_PUBLIC_PORT'); // قراءة كـ string فقط
+    const publicPortRaw = this.configService.get<string>('MINIO_PUBLIC_PORT');
+
+    // ✅ NEW: قراءة MINIO_PUBLIC_USE_SSL (مع default = 'true')
+    const publicUseSSLRaw = this.configService.get<string>(
+      'MINIO_PUBLIC_USE_SSL',
+      'true',
+    );
 
     if (!publicHostFromEnv || !publicPortRaw) {
       throw new InternalServerErrorException(
@@ -85,8 +94,7 @@ export class MinioService implements OnModuleInit {
       );
     }
 
-    // *** التصحيح الرئيسي: تحويل المنفذ العام إلى رقم صحيح ***
-    const publicPort = parseInt(publicPortRaw, 10); // تحويل آمن بعد التحقق
+    const publicPort = parseInt(publicPortRaw, 10);
     if (Number.isNaN(publicPort)) {
       throw new InternalServerErrorException(
         'MINIO_PUBLIC_PORT is not a valid number',
@@ -94,25 +102,18 @@ export class MinioService implements OnModuleInit {
     }
 
     this.publicHost = publicHostFromEnv;
-    this.publicPort = publicPort; // تخزين القيمة المحولة إلى رقم
+    this.publicPort = publicPort;
 
-    // this.ensureBucketExists();
+    // ✅ NEW: تحويل وتخزين public useSSL
+    this.publicUseSSL = ['true', '1'].includes(publicUseSSLRaw);
   }
 
-  /**
-   * يرفع ملفًا إلى MinIO
-   * @param objectName اسم الملف في MinIO
-   * @param buffer محتوى الملف كـ Buffer
-   * @param mimeType نوع الملف
-   * @returns اسم الملف الذي تم تخزينه
-   */
   async uploadFile(
     objectName: string,
     buffer: Buffer,
     mimeType: string,
   ): Promise<string> {
     try {
-      // 1. تعريف كائن البيانات الوصفية (metadata)
       const metaData = {
         'Content-Type': mimeType,
       };
@@ -121,8 +122,8 @@ export class MinioService implements OnModuleInit {
         this.bucketName,
         objectName,
         buffer,
-        buffer.length, // المعامل الرابع: حجم الملف (رقم)
-        metaData, // المعامل الخامس: البيانات الوصفية (كائن)
+        buffer.length,
+        metaData,
       );
 
       return objectName;
@@ -131,24 +132,17 @@ export class MinioService implements OnModuleInit {
       throw new InternalServerErrorException('File upload failed.');
     }
   }
-  /**
-   * ينشئ رابطًا مؤقتًا آمنًا لتنزيل الملف، ويقوم بتصحيح المضيف يدوياً.
-   * @param objectName اسم الملف في MinIO
-   * @param expiry صلاحية الرابط بالثواني (افتراضي 7 أيام)
-   * @returns رابط التنزيل المؤقت
-   */
+
   async getPresignedUrl(
     objectName: string,
     expiry: number = 60 * 60 * 24 * 7,
   ): Promise<string> {
     try {
-      // 1. إنشاء عميل MinIO مؤقت لغرض التوقيع فقط.
-      // نستخدم إعدادات المضيف العام (192.168.1.7:9000) لضمان التوقيع الصحيح.
-      // هذا لن يسبب ECONNREFUSED لأن 192.168.1.7 هو عنوان IP حقيقي.
+      // ✅ هنا التعديل الأساسي: useSSL يجب أن يأتي من MINIO_PUBLIC_USE_SSL
       const publicUrlClient = new Client({
-        endPoint: this.publicHost, // 192.168.1.7
-        port: this.publicPort, // 9000
-        useSSL: this.useSSL,
+        endPoint: this.publicHost,
+        port: this.publicPort,
+        useSSL: this.publicUseSSL, // ✅ CHANGED (was this.useSSL)
         accessKey: this.accessKey,
         secretKey: this.secretKey,
       });
@@ -158,8 +152,8 @@ export class MinioService implements OnModuleInit {
         objectName,
         expiry,
       );
-      this.logger.log(`Final Public URL with correct signature: ${publicUrl}`);
 
+      this.logger.log(`Final Public URL with correct signature: ${publicUrl}`);
       return publicUrl;
     } catch (error) {
       this.logger.error(
@@ -172,6 +166,7 @@ export class MinioService implements OnModuleInit {
       );
     }
   }
+
   async objectExists(objectName: string): Promise<boolean> {
     try {
       await this.minioClient.statObject(this.bucketName, objectName);
@@ -180,8 +175,8 @@ export class MinioService implements OnModuleInit {
       return false;
     }
   }
+
   async onModuleInit() {
-    // *** تغيير الاسم إلى onModuleInit ***
     try {
       const exists = await this.minioClient.bucketExists(this.bucketName);
       if (!exists) {
@@ -199,6 +194,7 @@ export class MinioService implements OnModuleInit {
       );
     }
   }
+
   async removeFile(objectName: string): Promise<void> {
     try {
       await this.minioClient.removeObject(this.bucketName, objectName);
