@@ -7,6 +7,7 @@ export declare class MinioService implements OnModuleInit {
     private readonly bucketName;
     private readonly publicHost;
     private readonly publicPort;
+    private readonly publicUseSSL;
     private readonly accessKey;
     private readonly secretKey;
     private readonly useSSL;

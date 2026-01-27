@@ -19,6 +19,7 @@ import { Step, StepStatus } from 'src/types/steps';
 import { UserRole } from 'src/users/user.entity';
 import { UsersService } from 'src/users/users.service';
 import { randomUUID } from 'crypto';
+import { STEP1_QUESTIONS } from './step1/step1.questions';
 @Injectable()
 export class FilesService {
   constructor(
@@ -374,11 +375,15 @@ export class FilesService {
     if (ownerUserId !== userId) {
       throw new ForbiddenException('Access to this declaration is forbidden.');
     }
+
     await this.ensureStep1Editable(declarationId, false);
+
+    const safeAnswers = this.sanitizeStep1Answers(answers);
+
     const snapshot = declaration.questionnaireSnapshot ?? {};
     snapshot.step1Answers = {
       ...(snapshot.step1Answers ?? {}),
-      ...answers,
+      ...safeAnswers,
     };
 
     await this.ordersService.saveDeclaration(declarationId, {
@@ -493,5 +498,54 @@ export class FilesService {
         'Step 1 is locked because documents were approved.',
       );
     }
+  }
+  private sanitizeStep1Answers(
+    input: Record<string, any>,
+  ): Record<string, any> {
+    const defs = new Map(STEP1_QUESTIONS.map((q) => [q.id, q]));
+    const out: Record<string, any> = {};
+
+    for (const [key, raw] of Object.entries(input ?? {})) {
+      const def = defs.get(key);
+      if (!def) {
+        throw new BadRequestException(`Unknown Step 1 field: ${key}`);
+      }
+
+      // treat empty as empty (you can also choose to delete key instead)
+      if (raw === null || raw === undefined || raw === '') {
+        out[key] = '';
+        continue;
+      }
+
+      if (def.type === 'number') {
+        const n = Number(raw);
+        if (!Number.isFinite(n)) {
+          throw new BadRequestException(`Invalid number for ${key}`);
+        }
+        if (def.min !== undefined && n < def.min) {
+          throw new BadRequestException(`${key} must be >= ${def.min}`);
+        }
+        if (def.max !== undefined && n > def.max) {
+          throw new BadRequestException(`${key} must be <= ${def.max}`);
+        }
+        out[key] = n;
+        continue;
+      }
+
+      if (def.type === 'select') {
+        const allowed = new Set((def.options ?? []).map((o) => o.value));
+        const v = String(raw);
+        if (!allowed.has(v)) {
+          throw new BadRequestException(`Invalid option for ${key}`);
+        }
+        out[key] = v;
+        continue;
+      }
+
+      // text default
+      out[key] = String(raw).trim();
+    }
+
+    return out;
   }
 }

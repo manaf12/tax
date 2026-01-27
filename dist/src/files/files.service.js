@@ -24,6 +24,7 @@ const steps_1 = require("../types/steps");
 const user_entity_1 = require("../users/user.entity");
 const users_service_1 = require("../users/users.service");
 const crypto_1 = require("crypto");
+const step1_questions_1 = require("./step1/step1.questions");
 let FilesService = class FilesService {
     filesRepository;
     ordersService;
@@ -258,10 +259,11 @@ let FilesService = class FilesService {
             throw new common_1.ForbiddenException('Access to this declaration is forbidden.');
         }
         await this.ensureStep1Editable(declarationId, false);
+        const safeAnswers = this.sanitizeStep1Answers(answers);
         const snapshot = declaration.questionnaireSnapshot ?? {};
         snapshot.step1Answers = {
             ...(snapshot.step1Answers ?? {}),
-            ...answers,
+            ...safeAnswers,
         };
         await this.ordersService.saveDeclaration(declarationId, {
             questionnaireSnapshot: snapshot,
@@ -338,6 +340,45 @@ let FilesService = class FilesService {
         if (reviewStep?.status === steps_1.StepStatus.DONE) {
             throw new common_1.ForbiddenException('Step 1 is locked because documents were approved.');
         }
+    }
+    sanitizeStep1Answers(input) {
+        const defs = new Map(step1_questions_1.STEP1_QUESTIONS.map((q) => [q.id, q]));
+        const out = {};
+        for (const [key, raw] of Object.entries(input ?? {})) {
+            const def = defs.get(key);
+            if (!def) {
+                throw new common_1.BadRequestException(`Unknown Step 1 field: ${key}`);
+            }
+            if (raw === null || raw === undefined || raw === '') {
+                out[key] = '';
+                continue;
+            }
+            if (def.type === 'number') {
+                const n = Number(raw);
+                if (!Number.isFinite(n)) {
+                    throw new common_1.BadRequestException(`Invalid number for ${key}`);
+                }
+                if (def.min !== undefined && n < def.min) {
+                    throw new common_1.BadRequestException(`${key} must be >= ${def.min}`);
+                }
+                if (def.max !== undefined && n > def.max) {
+                    throw new common_1.BadRequestException(`${key} must be <= ${def.max}`);
+                }
+                out[key] = n;
+                continue;
+            }
+            if (def.type === 'select') {
+                const allowed = new Set((def.options ?? []).map((o) => o.value));
+                const v = String(raw);
+                if (!allowed.has(v)) {
+                    throw new common_1.BadRequestException(`Invalid option for ${key}`);
+                }
+                out[key] = v;
+                continue;
+            }
+            out[key] = String(raw).trim();
+        }
+        return out;
     }
 };
 exports.FilesService = FilesService;

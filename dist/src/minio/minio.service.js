@@ -21,6 +21,7 @@ let MinioService = MinioService_1 = class MinioService {
     bucketName;
     publicHost;
     publicPort;
+    publicUseSSL;
     accessKey;
     secretKey;
     useSSL;
@@ -58,6 +59,7 @@ let MinioService = MinioService_1 = class MinioService {
         });
         const publicHostFromEnv = this.configService.get('MINIO_PUBLIC_HOST');
         const publicPortRaw = this.configService.get('MINIO_PUBLIC_PORT');
+        const publicUseSSLRaw = this.configService.get('MINIO_PUBLIC_USE_SSL', 'true');
         if (!publicHostFromEnv || !publicPortRaw) {
             throw new common_1.InternalServerErrorException('MINIO_PUBLIC_HOST or MINIO_PUBLIC_PORT is not defined in .env file. These are required to generate public URLs.');
         }
@@ -67,6 +69,7 @@ let MinioService = MinioService_1 = class MinioService {
         }
         this.publicHost = publicHostFromEnv;
         this.publicPort = publicPort;
+        this.publicUseSSL = ['true', '1'].includes(publicUseSSLRaw);
     }
     async uploadFile(objectName, buffer, mimeType) {
         try {
@@ -86,7 +89,7 @@ let MinioService = MinioService_1 = class MinioService {
             const publicUrlClient = new minio_1.Client({
                 endPoint: this.publicHost,
                 port: this.publicPort,
-                useSSL: this.useSSL,
+                useSSL: this.publicUseSSL,
                 accessKey: this.accessKey,
                 secretKey: this.secretKey,
             });

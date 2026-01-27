@@ -54,6 +54,7 @@ const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const multer_1 = require("multer");
 const user_decorator_1 = require("../auth/user.decorator");
 const multer = __importStar(require("multer"));
+const step1_questions_1 = require("./step1/step1.questions");
 let FilesController = class FilesController {
     filesService;
     constructor(filesService) {
@@ -86,6 +87,10 @@ let FilesController = class FilesController {
     async unmarkMissing(declarationId, docType, userId) {
         await this.filesService.unmarkDocumentMissing(userId, declarationId, docType);
         return { ok: true };
+    }
+    async getStep1Questions(declarationId, userId, roles = []) {
+        await this.filesService.getStep1Answers(userId, roles, declarationId);
+        return { questions: step1_questions_1.STEP1_QUESTIONS };
     }
     async getStep1Answers(declarationId, userId, roles = []) {
         const answers = await this.filesService.getStep1Answers(userId, roles, declarationId);
@@ -175,6 +180,15 @@ __decorate([
     __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", Promise)
 ], FilesController.prototype, "unmarkMissing", null);
+__decorate([
+    (0, common_1.Get)(':declarationId/step1/questions'),
+    __param(0, (0, common_1.Param)('declarationId', common_1.ParseUUIDPipe)),
+    __param(1, (0, user_decorator_1.User)('sub')),
+    __param(2, (0, user_decorator_1.User)('roles')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Array]),
+    __metadata("design:returntype", Promise)
+], FilesController.prototype, "getStep1Questions", null);
 __decorate([
     (0, common_1.Get)(':declarationId/step1/answers'),
     __param(0, (0, common_1.Param)('declarationId', common_1.ParseUUIDPipe)),

@@ -646,15 +646,13 @@ export class OrdersService {
     );
 
     const REQUIRED_DOCUMENT_TYPES = [
+      'previous_tax_return',
       'salary_certificate',
       'bank_statement',
       'pillar_3_certificate',
-      'property_deed_main',
-      'property_deed_rental',
-      'debt_statement',
       'medical_expense_receipt',
+      'taxero_invoice_payment_proof',
     ];
-
     const requiredQuestions: string[] =
       (decl?.questionnaireSnapshot?.step1RequiredQuestions as string[]) ?? [];
 

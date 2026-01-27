@@ -28,6 +28,9 @@ export declare class FilesController {
     unmarkMissing(declarationId: string, docType: string, userId: string): Promise<{
         ok: boolean;
     }>;
+    getStep1Questions(declarationId: string, userId: string, roles?: string[]): Promise<{
+        questions: import("./step1/step1.questions").Step1Question[];
+    }>;
     getStep1Answers(declarationId: string, userId: string, roles?: string[]): Promise<{
         answers: any;
     }>;

@@ -22,6 +22,7 @@ import { File as MulterFile } from 'multer';
 import { User } from '../auth/user.decorator';
 import { File } from './file.entity';
 import * as multer from 'multer';
+import { STEP1_QUESTIONS } from './step1/step1.questions';
 
 @Controller('files')
 @UseGuards(JwtAuthGuard)
@@ -142,6 +143,16 @@ export class FilesController {
       docType,
     );
     return { ok: true };
+  }
+  @Get(':declarationId/step1/questions')
+  async getStep1Questions(
+    @Param('declarationId', ParseUUIDPipe) declarationId: string,
+    @User('sub') userId: string,
+    @User('roles') roles: string[] = [],
+  ) {
+    // Optional: enforce same access as answers (usually fine to allow for owner/admin only)
+    await this.filesService.getStep1Answers(userId, roles, declarationId);
+    return { questions: STEP1_QUESTIONS };
   }
   @Get(':declarationId/step1/answers')
   async getStep1Answers(

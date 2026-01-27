@@ -33,4 +33,5 @@ export declare class FilesService {
     private reopenStep1IfConfirmed;
     private ensureStep1Started;
     private ensureStep1Editable;
+    private sanitizeStep1Answers;
 }

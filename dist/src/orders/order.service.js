@@ -454,13 +454,12 @@ let OrdersService = class OrdersService {
         const missingMeta = step.meta?.missingDocs ?? [];
         const missingDocTypes = new Set(missingMeta.map((m) => m.documentType));
         const REQUIRED_DOCUMENT_TYPES = [
+            'previous_tax_return',
             'salary_certificate',
             'bank_statement',
             'pillar_3_certificate',
-            'property_deed_main',
-            'property_deed_rental',
-            'debt_statement',
             'medical_expense_receipt',
+            'taxero_invoice_payment_proof',
         ];
         const requiredQuestions = decl?.questionnaireSnapshot?.step1RequiredQuestions ?? [];
         const step1Answers = decl?.questionnaireSnapshot?.step1Answers ?? {};
