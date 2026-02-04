@@ -3,11 +3,11 @@ export type Step1Type = 'text' | 'number' | 'select';
 
 export type Step1Question = {
   id: string;
-  label: string;
+  labelKey: string;
   type: Step1Type;
   required: boolean;
-  section: string;
-  options?: { value: string; label: string }[];
+  sectionKey: string;
+  options?: { value: string; labelKey: string }[];
   min?: number;
   max?: number;
 };
@@ -15,87 +15,94 @@ export type Step1Question = {
 export const STEP1_QUESTIONS: Step1Question[] = [
   {
     id: 'personalChanges',
-    label:
-      'Notification of any changes vs previous year (address, marital status, children, assets, etc.)',
+    labelKey: 'step1.questions.personalChanges',
     type: 'text',
     required: false,
-    section: 'Personal Information',
+    sectionKey: 'step1.sections.personalInformation',
   },
 
   {
     id: 'transportMode',
-    label: 'Transport mode',
+    labelKey: 'step1.questions.transportMode',
     type: 'select',
     required: true,
-    section: 'Professional Expenses',
+    sectionKey: 'step1.sections.professionalExpenses',
     options: [
-      { value: 'publicTransport', label: 'Public transport' },
-      { value: 'bicycle', label: 'Bicycle' },
-      { value: 'vehicle', label: 'Vehicle (car/motorcycle)' },
+      {
+        value: 'publicTransport',
+        labelKey: 'step1.options.transportMode.publicTransport',
+      },
+      { value: 'bicycle', labelKey: 'step1.options.transportMode.bicycle' },
+      { value: 'vehicle', labelKey: 'step1.options.transportMode.vehicle' },
     ],
   },
+
   {
     id: 'distanceToWorkKm',
-    label: 'Distance to work (km)',
+    labelKey: 'step1.questions.distanceToWorkKm',
     type: 'number',
     required: true,
-    section: 'Professional Expenses',
+    sectionKey: 'step1.sections.professionalExpenses',
     min: 0,
   },
+
   {
     id: 'weeklyTripsToWork',
-    label: 'Number of weekly trips',
+    labelKey: 'step1.questions.weeklyTripsToWork',
     type: 'number',
     required: true,
-    section: 'Professional Expenses',
+    sectionKey: 'step1.sections.professionalExpenses',
     min: 0,
   },
+
   {
     id: 'mealsOutsidePerWeek',
-    label: 'Meals per week taken outside home',
+    labelKey: 'step1.questions.mealsOutsidePerWeek',
     type: 'number',
     required: true,
-    section: 'Professional Expenses',
+    sectionKey: 'step1.sections.professionalExpenses',
     min: 0,
   },
 
   {
     id: 'netAnnualRentVD_GE',
-    label: 'Net annual rent (VD + GE only)',
+    labelKey: 'step1.questions.netAnnualRentVD_GE',
     type: 'number',
-    required: false, // later make conditional
-    section: 'Housing',
+    required: false,
+    sectionKey: 'step1.sections.housing',
     min: 0,
   },
 
   {
     id: 'canton',
-    label: 'Canton',
+    labelKey: 'step1.questions.canton',
     type: 'select',
     required: true,
-    section: 'Tax Authority Numbers',
+    sectionKey: 'step1.sections.taxAuthorityNumbers',
     options: [
-      { value: 'FR', label: 'Fribourg (FR)' },
-      { value: 'BE', label: 'Bern (BE)' },
-      { value: 'VD', label: 'Vaud (VD)' },
-      { value: 'VS', label: 'Valais (VS)' },
-      { value: 'NE', label: 'Neuchâtel (NE)' },
-      { value: 'GE', label: 'Geneva (GE)' },
-      { value: 'OTHER', label: 'Other' },
+      { value: 'FR', labelKey: 'step1.options.canton.FR' },
+      { value: 'BE', labelKey: 'step1.options.canton.BE' },
+      { value: 'VD', labelKey: 'step1.options.canton.VD' },
+      { value: 'VS', labelKey: 'step1.options.canton.VS' },
+      { value: 'NE', labelKey: 'step1.options.canton.NE' },
+      { value: 'GE', labelKey: 'step1.options.canton.GE' },
+      { value: 'OTHER', labelKey: 'step1.options.canton.OTHER' },
     ],
   },
+
   {
     id: 'taxpayerNumber',
-    label: 'Taxpayer number',
+    labelKey: 'step1.questions.taxpayerNumber',
     type: 'text',
     required: true,
-    section: 'Tax Authority Numbers',
+    sectionKey: 'step1.sections.taxAuthorityNumbers',
   },
+
   {
     id: 'controlOrDeclarationCode',
-    label: 'Control code / Declaration code / Code (if applicable)',
+    labelKey: 'step1.questions.controlOrDeclarationCode',
     type: 'text',
     required: false,
-    section: 'Tax Authority Numbers',
+    sectionKey: 'step1.sections.taxAuthorityNumbers',
   },
 ];
