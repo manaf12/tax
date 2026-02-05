@@ -81,9 +81,9 @@ let PricingService = class PricingService {
                 surcharges.firstTimeFee = firstTimeFee;
             }
         }
-        const standardPrice = variablePrice;
-        const premiumPrice = standardPrice + 120;
-        const confortPrice = premiumPrice * 2;
+        const standardPrice = variablePrice - 1;
+        const premiumPrice = standardPrice + 120 - 1;
+        const confortPrice = premiumPrice * 2 - 1;
         let finalPrice = 0;
         switch (offer) {
             case tax_declaration_entity_1.OfferType.STANDARD:
@@ -248,9 +248,9 @@ let PricingService = class PricingService {
         variablePrice += normalized.numSecurities * 10;
         variablePrice += normalized.numRealEstate * 80;
         variablePrice += normalized.firstTimeDeclaredCount * 60;
-        const standardPrice = variablePrice;
-        const premiumPrice = standardPrice + 120;
-        const confortPrice = premiumPrice * 2;
+        const standardPrice = variablePrice - 1;
+        const premiumPrice = standardPrice + 120 - 1;
+        const confortPrice = premiumPrice * 2 - 1;
         return {
             standard: standardPrice,
             premium: premiumPrice,

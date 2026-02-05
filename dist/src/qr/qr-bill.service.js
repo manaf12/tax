@@ -186,7 +186,7 @@ let QrBillService = class QrBillService {
             const totalNet = amount;
             const tvaRate = Number(data.tvaRate ?? 8.1);
             const tvaValue = Number(data.tvaValue ?? (totalNet * tvaRate) / 100);
-            const grandTotal = Number(data.totalAmount ?? totalNet + tvaValue);
+            const grandTotal = Number(data.totalAmount ?? totalNet);
             doc.font(fontRegular).fontSize(11).fillColor('#000');
             doc.text('Total net', tableX + mm(2), doc.y, { width: tableW * 0.6 });
             doc.text(moneyDisplay(totalNet), tableX, doc.y, {

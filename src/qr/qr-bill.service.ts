@@ -289,28 +289,22 @@ export class QrBillService {
       const headerTextX = logoX + (data.logo ? logoSize + mm(6) : 0);
 
       doc.font(fontBold).fontSize(16).fillColor('#000');
-      doc.text('A&G Fiduciaire Sàrl', headerTextX, headerTopY, {
+      doc.text('Taxero.ch', headerTextX, headerTopY, {
         width: contentW,
       });
 
       doc.font(fontBold).fontSize(9);
-      doc.text('Georges Arbach', headerTextX, headerTopY + mm(7), {
+      doc.text('A&G Fiduciaire Sàrl', headerTextX, headerTopY + mm(7), {
         width: contentW,
       });
 
       doc.font(fontRegular).fontSize(9);
-      doc.text(
-        'Impasse du nouveau marché 7, 1723 Marly',
-        headerTextX,
-        headerTopY + mm(11),
-        { width: contentW },
-      );
-      doc.text(
-        'georges.arbach@ag-fiduciaire.ch, www.ag-fiduciaire.ch',
-        headerTextX,
-        headerTopY + mm(15),
-        { width: contentW },
-      );
+      doc.text('Route de Moncor 14', headerTextX, headerTopY + mm(11), {
+        width: contentW,
+      });
+      doc.text('1752 Villars sur Glâne', headerTextX, headerTopY + mm(15), {
+        width: contentW,
+      });
       doc.text('CHE-450.723.829 TVA', headerTextX, headerTopY + mm(19), {
         width: contentW,
       });
@@ -465,7 +459,7 @@ export class QrBillService {
       const totalNet = amount;
       const tvaRate = Number(data.tvaRate ?? 8.1);
       const tvaValue = Number(data.tvaValue ?? (totalNet * tvaRate) / 100);
-      const grandTotal = Number(data.totalAmount ?? totalNet + tvaValue);
+      const grandTotal = Number(data.totalAmount ?? totalNet);
 
       doc.font(fontRegular).fontSize(11).fillColor('#000');
       doc.text('Total net', tableX + mm(2), doc.y, { width: tableW * 0.6 });
