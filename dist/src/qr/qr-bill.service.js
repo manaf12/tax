@@ -1,10 +1,43 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -13,6 +46,8 @@ exports.QrBillService = void 0;
 const common_1 = require("@nestjs/common");
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const qrcode_1 = __importDefault(require("qrcode"));
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 let QrBillService = class QrBillService {
     async generateQrBillPdf(data) {
         const payload = this.buildQrPayload(data);
@@ -85,17 +120,19 @@ let QrBillService = class QrBillService {
             }
             const headerTextX = logoX + (data.logo ? logoSize + mm(6) : 0);
             doc.font(fontBold).fontSize(16).fillColor('#000');
-            doc.text('A&G Fiduciaire Sàrl', headerTextX, headerTopY, {
-                width: contentW,
-            });
+            doc.text('Taxero.ch', headerTextX, headerTopY, { width: contentW });
             doc.font(fontBold).fontSize(9);
-            doc.text('Georges Arbach', headerTextX, headerTopY + mm(7), {
+            doc.text('A&G Fiduciaire Sàrl', headerTextX, headerTopY + mm(7), {
                 width: contentW,
             });
             doc.font(fontRegular).fontSize(9);
-            doc.text('Impasse du nouveau marché 7, 1723 Marly', headerTextX, headerTopY + mm(11), { width: contentW });
-            doc.text('georges.arbach@ag-fiduciaire.ch, www.ag-fiduciaire.ch', headerTextX, headerTopY + mm(15), { width: contentW });
-            doc.text('CHE-450.723.829 TVA', headerTextX, headerTopY + mm(19), {
+            doc.text('Route de Moncor 14', headerTextX, headerTopY + mm(11), {
+                width: contentW,
+            });
+            doc.text('1752 Villars sur Glâne', headerTextX, headerTopY + mm(15), {
+                width: contentW,
+            });
+            doc.text('CHE-450.723.829 VAT', headerTextX, headerTopY + mm(19), {
                 width: contentW,
             });
             doc.y = headerTopY + mm(30);
@@ -183,57 +220,48 @@ let QrBillService = class QrBillService {
                 .stroke();
             doc.restore();
             doc.y = lineY + mm(6);
-            const totalNet = amount;
             const tvaRate = Number(data.tvaRate ?? 8.1);
-            const tvaValue = Number(data.tvaValue ?? (totalNet * tvaRate) / 100);
-            const grandTotal = Number(data.totalAmount ?? totalNet);
-            doc.font(fontRegular).fontSize(11).fillColor('#000');
-            doc.text('Total net', tableX + mm(2), doc.y, { width: tableW * 0.6 });
-            doc.text(moneyDisplay(totalNet), tableX, doc.y, {
-                width: tableW - mm(2),
-                align: 'right',
-            });
-            doc.moveDown(0.6);
-            doc.text(`TVA ${tvaRate.toFixed(2)}% (${moneyDisplay(totalNet)})`, tableX + mm(2), doc.y, {
-                width: tableW * 0.7,
-            });
-            doc.text(moneyDisplay(tvaValue), tableX, doc.y, {
-                width: tableW - mm(2),
-                align: 'right',
-            });
-            doc.moveDown(0.8);
-            const totalY = doc.y;
-            doc.font(fontBold).fontSize(13).fillColor(BLUE);
-            doc.text('TOTAL CHF', tableX + mm(2), totalY, { width: tableW * 0.5 });
-            doc.text(moneyDisplay(grandTotal), tableX, totalY, {
-                width: tableW - mm(2),
-                align: 'right',
-            });
-            const ruleY1 = totalY + mm(6.5);
-            const ruleY2 = ruleY1 + mm(1.6);
-            doc.save();
-            doc.strokeColor(BLUE).lineWidth(1.4);
-            doc
-                .moveTo(tableX, ruleY1)
-                .lineTo(tableX + tableW, ruleY1)
-                .stroke();
-            doc.lineWidth(0.8);
-            doc
-                .moveTo(tableX, ruleY2)
-                .lineTo(tableX + tableW, ruleY2)
-                .stroke();
-            doc.restore();
+            const grandTotal = Number(data.totalAmount != null ? data.totalAmount : amount);
+            const totalNet = grandTotal / (1 + tvaRate / 100);
+            const tvaValue = grandTotal - totalNet;
+            const pctFromNet = (v) => {
+                if (!totalNet)
+                    return '';
+                return `${((v / totalNet) * 100).toFixed(1)}%`;
+            };
+            const boxW = mm(62);
+            const boxX = tableX + tableW - boxW;
+            let boxY = doc.y;
+            const summaryRow = (labelText, valueText, pctText, isBold = false) => {
+                doc.font(isBold ? fontBold : fontRegular).fontSize(isBold ? 10.5 : 10);
+                doc.fillColor('#000');
+                doc.text(labelText, boxX, boxY, { width: mm(18) });
+                doc.text(valueText, boxX + mm(18), boxY, {
+                    width: mm(26),
+                    align: 'right',
+                });
+                doc.text(pctText, boxX + mm(44), boxY, {
+                    width: mm(18),
+                    align: 'right',
+                });
+                boxY += mm(6);
+            };
+            summaryRow('Price', moneyDisplay(grandTotal), pctFromNet(grandTotal));
+            summaryRow('Net', moneyDisplay(totalNet), '100.0%');
+            summaryRow('VAT', moneyDisplay(tvaValue), `${tvaRate.toFixed(1)}%`);
+            summaryRow('Total', moneyDisplay(grandTotal), '', true);
+            doc.y = Math.max(doc.y, boxY + mm(2));
             const blockH = mm(92);
             const blockY = pageH - doc.page.margins.bottom - blockH;
             const blockX = contentX;
-            const blockW = contentW;
+            const blockW2 = contentW;
             const clampY = (y) => Math.min(y, blockY + blockH - mm(6));
             const cutY = blockY - mm(6);
             doc.save();
             doc.strokeColor('#000').lineWidth(0.7).dash(4, { space: 3 });
             doc
                 .moveTo(blockX, cutY)
-                .lineTo(blockX + blockW, cutY)
+                .lineTo(blockX + blockW2, cutY)
                 .stroke();
             doc.undash();
             doc.restore();
@@ -260,31 +288,83 @@ let QrBillService = class QrBillService {
                     .font(fontRegular)
                     .fontSize(9)
                     .fillColor('#000')
+                    .text(t, x, clampY(y), { lineGap: 1.4, ...opts });
+            };
+            const receiptValue = (x, y, t, opts = {}) => {
+                doc
+                    .font(fontRegular)
+                    .fontSize(8.7)
+                    .fillColor('#000')
                     .text(t, x, clampY(y), {
-                    lineGap: 1.5,
+                    width: receiptW - mm(6),
+                    lineGap: 1,
                     ...opts,
                 });
             };
             const rX = blockX + mm(2);
             const rY = blockY + mm(16);
             label(rX, rY, 'Compte / Payable à');
-            value(rX, rY + mm(4), formatIban(data.creditorAccount));
-            value(rX, rY + mm(10), 'A&G Fiduciaire Sàrl');
-            value(rX, rY + mm(14), 'Impasse du nouveau marché 7');
-            value(rX, rY + mm(18), '1723 Marly');
+            receiptValue(rX, rY + mm(4), formatIban(data.creditorAccount));
+            receiptValue(rX, rY + mm(10), 'A&G Fiduciaire Sàrl');
+            receiptValue(rX, rY + mm(14), 'Impasse du nouveau marché 7');
+            receiptValue(rX, rY + mm(18), '1723 Marly');
             label(rX, rY + mm(28), 'Référence');
-            value(rX, rY + mm(32), formatRefReadable(reference), {
+            receiptValue(rX, rY + mm(32), formatRefReadable(reference), {
                 width: receiptW - mm(6),
             });
-            label(rX, rY + mm(44), 'Payable par');
-            value(rX, rY + mm(48), sanitize(data.debtor?.name), {
-                width: receiptW - mm(6),
-            });
-            value(rX, rY + mm(52), sanitize(data.debtor?.address), {
-                width: receiptW - mm(6),
-            });
-            value(rX, rY + mm(56), `${sanitize(data.debtor?.zip)} ${sanitize(data.debtor?.city)}`.trim(), { width: receiptW - mm(6) });
             const rbBaseY = blockY + blockH - mm(16);
+            const bottomReservedTop = rbBaseY - mm(8);
+            const fitText = (text, maxWidth, maxHeight) => {
+                const t = (text ?? '').trim();
+                if (!t)
+                    return '';
+                if (doc.heightOfString(t, { width: maxWidth, lineGap: 1 }) <= maxHeight) {
+                    return t;
+                }
+                let lo = 0;
+                let hi = t.length;
+                let best = '…';
+                while (lo <= hi) {
+                    const mid = Math.floor((lo + hi) / 2);
+                    const candidate = t.slice(0, mid).trimEnd() + '…';
+                    const h = doc.heightOfString(candidate, {
+                        width: maxWidth,
+                        lineGap: 1,
+                    });
+                    if (h <= maxHeight) {
+                        best = candidate;
+                        lo = mid + 1;
+                    }
+                    else {
+                        hi = mid - 1;
+                    }
+                }
+                return best;
+            };
+            const payableLabelY = rY + mm(38);
+            label(rX, payableLabelY, 'Payable par');
+            const payableTextY = payableLabelY + mm(4);
+            const availableH = Math.max(0, bottomReservedTop - payableTextY);
+            const debtorBlock = [
+                sanitize(data.debtor?.name),
+                sanitize(data.debtor?.address),
+                [
+                    sanitize(data.debtor?.zip),
+                    sanitize(data.debtor?.city),
+                    sanitize(data.debtor?.country),
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim(),
+            ]
+                .filter(Boolean)
+                .join('\n');
+            doc.font(fontRegular).fontSize(8.7).fillColor('#000');
+            const fittedDebtor = fitText(debtorBlock, receiptW - mm(6), availableH);
+            doc.text(fittedDebtor, rX, clampY(payableTextY), {
+                width: receiptW - mm(6),
+                lineGap: 1,
+            });
             label(rX, rbBaseY - mm(5), 'Monnaie');
             label(rX + mm(18), rbBaseY - mm(5), 'Montant');
             value(rX, rbBaseY, 'CHF');
@@ -305,15 +385,36 @@ let QrBillService = class QrBillService {
             const cy = qrY + qrSize / 2 - crossBox / 2;
             doc.save();
             doc.rect(cx, cy, crossBox, crossBox).fill('#fff');
-            doc.strokeColor('#000').lineWidth(1.4);
-            doc
-                .moveTo(cx + crossBox / 2, cy + mm(1.2))
-                .lineTo(cx + crossBox / 2, cy + crossBox - mm(1.2))
-                .stroke();
-            doc
-                .moveTo(cx + mm(1.2), cy + crossBox / 2)
-                .lineTo(cx + crossBox - mm(1.2), cy + crossBox / 2)
-                .stroke();
+            let crossPng = null;
+            try {
+                const envPath = process.env.QR_CROSS_PATH
+                    ? path.resolve(process.env.QR_CROSS_PATH)
+                    : null;
+                const mntPath = '/mnt/data/CH-Kreuz_7mm.png';
+                const relPath = path.join(process.cwd(), 'src/assets/CH-Kreuz_7mm.png');
+                const chosen = (envPath && fs.existsSync(envPath) && envPath) ||
+                    (fs.existsSync(mntPath) && mntPath) ||
+                    relPath;
+                if (fs.existsSync(chosen))
+                    crossPng = fs.readFileSync(chosen);
+            }
+            catch {
+                crossPng = null;
+            }
+            if (crossPng) {
+                doc.image(crossPng, cx, cy, { width: crossBox, height: crossBox });
+            }
+            else {
+                doc.strokeColor('#000').lineWidth(1.4);
+                doc
+                    .moveTo(cx + crossBox / 2, cy + mm(1.2))
+                    .lineTo(cx + crossBox / 2, cy + crossBox - mm(1.2))
+                    .stroke();
+                doc
+                    .moveTo(cx + mm(1.2), cy + crossBox / 2)
+                    .lineTo(cx + crossBox - mm(1.2), cy + crossBox / 2)
+                    .stroke();
+            }
             doc.restore();
             const underY = clampY(qrY + qrSize + mm(6));
             label(qrX + mm(2), underY, 'Monnaie');
@@ -321,7 +422,7 @@ let QrBillService = class QrBillService {
             value(qrX + mm(2), underY + mm(5), 'CHF');
             value(qrX + mm(22), underY + mm(5), moneyPayload(grandTotal));
             const infoX = qrX + qrSize + mm(14);
-            const infoW = blockX + blockW - infoX - mm(2);
+            const infoW = blockX + blockW2 - infoX - mm(2);
             label(infoX, pY, 'Compte / Payable à');
             value(infoX, pY + mm(4), formatIban(data.creditorAccount), {
                 width: infoW,

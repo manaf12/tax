@@ -13,6 +13,7 @@ export declare class OrdersService {
     private pricingRepository;
     private dataSource;
     constructor(declarationsRepository: Repository<TaxDeclaration>, usersService: UsersService, pricingService: PricingService, pricingRepository: Repository<Pricing>, dataSource: DataSource);
+    private isStaff;
     getDefaultSteps(): Step[];
     findDeclarationById(declarationId: string, relations?: string[]): Promise<TaxDeclaration>;
     findOne(declarationId: string): Promise<TaxDeclaration>;

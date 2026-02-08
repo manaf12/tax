@@ -36,6 +36,9 @@ let OrdersService = class OrdersService {
         this.pricingRepository = pricingRepository;
         this.dataSource = dataSource;
     }
+    isStaff(roles = []) {
+        return (roles.includes(user_entity_1.UserRole.ADMIN) || roles.includes(user_entity_1.UserRole.SUPER_ADMIN));
+    }
     getDefaultSteps() {
         return [
             {
@@ -124,8 +127,8 @@ let OrdersService = class OrdersService {
         return this.declarationsRepository.save(declaration);
     }
     async setPricing(declarationId, adminUser, pricingData) {
-        if (!adminUser.roles.includes(user_entity_1.UserRole.ADMIN)) {
-            throw new common_1.ForbiddenException('Only administrators can set pricing.');
+        if (!this.isStaff(adminUser.roles)) {
+            throw new common_1.ForbiddenException('Only staff can set pricing.');
         }
         const declaration = await this.findDeclarationById(declarationId, [
             'pricing',
@@ -167,8 +170,8 @@ let OrdersService = class OrdersService {
         if (!adminUser) {
             throw new common_1.NotFoundException('Admin user not found.');
         }
-        if (!adminUser.roles.includes(user_entity_1.UserRole.ADMIN)) {
-            throw new common_1.ForbiddenException('Only administrators can complete a declaration.');
+        if (!this.isStaff(adminUser.roles)) {
+            throw new common_1.ForbiddenException('Only staff can complete a declaration.');
         }
         const declaration = await this.findDeclarationById(declarationId, [
             'clientProfile',

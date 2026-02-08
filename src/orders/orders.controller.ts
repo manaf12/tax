@@ -125,9 +125,11 @@ export class OrdersController {
     );
     if (!declaration) throw new NotFoundException('Declaration not found');
 
-    const isAdmin = req.user.roles?.includes(UserRole.ADMIN);
+    const roles = req.user?.roles ?? [];
+    const isStaff =
+      roles.includes(UserRole.ADMIN) || roles.includes(UserRole.SUPER_ADMIN);
 
-    if (declaration.clientProfile?.user?.id !== userId && !isAdmin) {
+    if (declaration.clientProfile?.user?.id !== userId && !isStaff) {
       throw new ForbiddenException(
         'Not allowed to comment on this declaration',
       );

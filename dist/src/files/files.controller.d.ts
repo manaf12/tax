@@ -4,7 +4,8 @@ import { File } from './file.entity';
 export declare class FilesController {
     private readonly filesService;
     constructor(filesService: FilesService);
-    uploadFile(declarationId: string, file: MulterFile, userId: string, documentType: string, deliveredForStep?: string): Promise<File>;
+    private isStaff;
+    uploadFile(declarationId: string, file: MulterFile, userId: string, roles: string[] | undefined, documentType: string, deliveredForStep?: string): Promise<File>;
     getFileUrl(fileId: string, userId: string): Promise<{
         url: string;
     }>;

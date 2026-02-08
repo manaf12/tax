@@ -33,7 +33,11 @@ export class OrdersService {
     private pricingRepository: Repository<Pricing>,
     private dataSource: DataSource,
   ) {}
-
+  private isStaff(roles: UserRole[] = []): boolean {
+    return (
+      roles.includes(UserRole.ADMIN) || roles.includes(UserRole.SUPER_ADMIN)
+    );
+  }
   public getDefaultSteps(): Step[] {
     return [
       {
@@ -169,8 +173,8 @@ export class OrdersService {
       finalPrice: number;
     },
   ): Promise<TaxDeclaration> {
-    if (!adminUser.roles.includes(UserRole.ADMIN)) {
-      throw new ForbiddenException('Only administrators can set pricing.');
+    if (!this.isStaff(adminUser.roles)) {
+      throw new ForbiddenException('Only staff can set pricing.');
     }
 
     const declaration = await this.findDeclarationById(declarationId, [
@@ -249,10 +253,8 @@ export class OrdersService {
     if (!adminUser) {
       throw new NotFoundException('Admin user not found.');
     }
-    if (!adminUser.roles.includes(UserRole.ADMIN)) {
-      throw new ForbiddenException(
-        'Only administrators can complete a declaration.',
-      );
+    if (!this.isStaff(adminUser.roles)) {
+      throw new ForbiddenException('Only staff can complete a declaration.');
     }
 
     const declaration = await this.findDeclarationById(declarationId, [

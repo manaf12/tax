@@ -55,16 +55,21 @@ const multer_1 = require("multer");
 const user_decorator_1 = require("../auth/user.decorator");
 const multer = __importStar(require("multer"));
 const step1_questions_1 = require("./step1/step1.questions");
+const user_entity_1 = require("../users/user.entity");
 let FilesController = class FilesController {
     filesService;
     constructor(filesService) {
         this.filesService = filesService;
     }
-    async uploadFile(declarationId, file, userId, documentType, deliveredForStep) {
+    isStaff(roles = []) {
+        return (roles.includes(user_entity_1.UserRole.ADMIN) || roles.includes(user_entity_1.UserRole.SUPER_ADMIN));
+    }
+    async uploadFile(declarationId, file, userId, roles = [], documentType, deliveredForStep) {
         if (!file) {
             throw new common_1.NotFoundException('File not provided in the request.');
         }
-        return this.filesService.uploadFile(userId, declarationId, file, documentType, false, deliveredForStep);
+        const actorIsStaff = this.isStaff(roles);
+        return this.filesService.uploadFile(userId, declarationId, file, documentType, actorIsStaff, deliveredForStep);
     }
     async getFileUrl(fileId, userId) {
         const url = await this.filesService.getFileUrl(fileId, userId);
@@ -118,10 +123,11 @@ __decorate([
     __param(0, (0, common_1.Param)('declarationId')),
     __param(1, (0, common_1.UploadedFile)()),
     __param(2, (0, user_decorator_1.User)('sub')),
-    __param(3, (0, common_1.Body)('documentType')),
-    __param(4, (0, common_1.Body)('deliveredForStep')),
+    __param(3, (0, user_decorator_1.User)('roles')),
+    __param(4, (0, common_1.Body)('documentType')),
+    __param(5, (0, common_1.Body)('deliveredForStep')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, typeof (_a = typeof multer_1.File !== "undefined" && multer_1.File) === "function" ? _a : Object, String, String, String]),
+    __metadata("design:paramtypes", [String, typeof (_a = typeof multer_1.File !== "undefined" && multer_1.File) === "function" ? _a : Object, String, Array, String, String]),
     __metadata("design:returntype", Promise)
 ], FilesController.prototype, "uploadFile", null);
 __decorate([

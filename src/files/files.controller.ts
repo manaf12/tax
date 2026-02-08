@@ -23,11 +23,17 @@ import { User } from '../auth/user.decorator';
 import { File } from './file.entity';
 import * as multer from 'multer';
 import { STEP1_QUESTIONS } from './step1/step1.questions';
+import { UserRole } from 'src/users/user.entity';
 
 @Controller('files')
 @UseGuards(JwtAuthGuard)
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
+  private isStaff(roles: string[] = []): boolean {
+    return (
+      roles.includes(UserRole.ADMIN) || roles.includes(UserRole.SUPER_ADMIN)
+    );
+  }
 
   @Post(':declarationId/upload')
   @UseInterceptors(
@@ -47,18 +53,21 @@ export class FilesController {
     @Param('declarationId') declarationId: string,
     @UploadedFile() file: MulterFile,
     @User('sub') userId: string,
+    @User('roles') roles: string[] = [],
     @Body('documentType') documentType: string,
     @Body('deliveredForStep') deliveredForStep?: string,
   ): Promise<File> {
     if (!file) {
       throw new NotFoundException('File not provided in the request.');
     }
+    const actorIsStaff = this.isStaff(roles);
+
     return this.filesService.uploadFile(
       userId,
       declarationId,
       file,
       documentType,
-      false,
+      actorIsStaff,
       deliveredForStep,
     );
   }

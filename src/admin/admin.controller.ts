@@ -115,7 +115,7 @@ export class AdminController {
   }
   @Post(':declarationId/step3-upload-draft') // <--- مسار جديد ومختلف
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   @UseInterceptors(FileInterceptor('file'))
   async uploadStep3Draft(
     @Param('declarationId') declarationId: string,

@@ -13,7 +13,8 @@ export declare class FilesService {
     private clamAVService;
     constructor(filesRepository: Repository<File>, ordersService: OrdersService, minioService: MinioService, userService: UsersService, clamAVService: ClamAVService);
     private saveFileToStorage;
-    uploadFile(userId: string, declarationId: string, file: MulterFile, documentType: string, actorIsAdmin?: boolean, deliveredForStep?: string): Promise<File>;
+    private isStaff;
+    uploadFile(userId: string, declarationId: string, file: MulterFile, documentType: string, actorIsStaff?: boolean, deliveredForStep?: string): Promise<File>;
     getFileUrl(fileId: string, requestingUserId: string): Promise<string>;
     uploadMultipleFiles(userId: string, declarationId: string, files: MulterFile[], documentType: string): Promise<{
         saved: File[];

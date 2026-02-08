@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   BadRequestException,
   ForbiddenException,
@@ -126,8 +124,14 @@ export class AdminService {
   ) {
     const adminUser = await this.usersService.findOneById(adminId);
     if (!adminUser) throw new NotFoundException('Target admin user not found.');
-    if (!adminUser.roles?.includes(UserRole.ADMIN)) {
-      throw new ForbiddenException('Target user is not an admin.');
+    const isStaff =
+      adminUser.roles?.includes(UserRole.ADMIN) ||
+      adminUser.roles?.includes(UserRole.SUPER_ADMIN);
+
+    if (!isStaff) {
+      throw new ForbiddenException(
+        'Target user is not an admin or super admin.',
+      );
     }
     const updated = await this.ordersService.assignDeclarationsToAdmin(
       declarationIds,

@@ -1,184 +1,14 @@
-/* eslint-disable no-control-regex */
 // /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 // /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-// import { Injectable } from '@nestjs/common';
-// import PDFDocument from 'pdfkit';
-// import QRCode from 'qrcode';
-
-// @Injectable()
-// export class QrBillService {
-//   async generateQrBillPdf(data: any): Promise<Buffer> {
-//     console.log(this.buildQrPayload(data));
-//     const payload = this.buildQrPayload(data);
-//     const lines = payload.split('\r\n');
-//     console.log(lines.length);
-//     const qrBuffer = await QRCode.toBuffer(payload, {
-//       type: 'png',
-//       errorCorrectionLevel: 'M',
-//       margin: 0,
-//       scale: 8,
-//     });
-//     const doc = new PDFDocument({ size: 'A4' });
-//     const buffers: Buffer[] = [];
-//     doc.on('data', buffers.push.bind(buffers));
-//     return new Promise((resolve, reject) => {
-//       doc.on('end', () => {
-//         resolve(Buffer.concat(buffers));
-//       });
-//       doc.on('error', reject);
-//       doc.fontSize(20).text('INVOICE', { align: 'center' });
-//       doc.moveDown();
-
-//       doc.fontSize(12).text(`Invoice No: ${data.reference}`);
-//       doc.text(`Date: ${new Date().toLocaleDateString()}`);
-//       doc.moveDown();
-
-//       doc.text('Creditor:');
-//       doc.text('A&G Fiduciaire Sàrl');
-//       doc.text('Impasse du nouveau marché 7');
-//       doc.text('1723 Marly, CH');
-
-//       doc.moveDown();
-//       doc.text('Bill To:');
-//       doc.text(data.debtor.name);
-//       doc.text(data.debtor.address);
-//       doc.text(`${data.debtor.zip} ${data.debtor.city}`);
-//       doc.text(data.debtor.country);
-
-//       doc.moveDown();
-//       doc.text(`Service: Tax declaration ${data.year}`);
-//       doc.text(`Amount: ${data.amount.toFixed(2)} CHF`);
-
-//       doc.moveDown();
-//       doc.image(qrBuffer, (doc.page.width - 220) / 2, doc.y, { width: 220 });
-
-//       doc.moveDown();
-//       doc
-//         .fontSize(10)
-//         .text('Please scan the QR code to pay.', { align: 'center' });
-//       doc.end();
-//     });
-//   }
-//   private generateRFReference(input: string): string {
-//     const base = input
-//       .replace(/[^a-zA-Z0-9]/g, '')
-//       .toUpperCase()
-//       .slice(0, 20);
-//     const temp = base + 'RF00';
-//     const converted = temp.replace(/[A-Z]/g, (c) =>
-//       (c.charCodeAt(0) - 55).toString(),
-//     );
-//     const mod = BigInt(converted) % 97n;
-//     const checksum = (98n - mod).toString().padStart(2, '0');
-//     return `RF${checksum}${base}`;
-//   }
-//   private isQrIban(iban: string): boolean {
-//     const clean = iban.replace(/\s/g, '');
-//     if (!clean.startsWith('CH') || clean.length !== 21) return false;
-
-//     // IID = positions 5-9 (بعد CH + checksum)
-//     const iidStr = clean.slice(4, 9);
-//     if (!/^\d{5}$/.test(iidStr)) return false;
-
-//     const iid = Number(iidStr);
-//     return iid >= 30000 && iid <= 31999;
-//   }
-//   private mod10Recursive(referenceDigits: string): string {
-//     const table = [0, 9, 4, 6, 8, 2, 7, 1, 3, 5];
-//     let carry = 0;
-//     for (const ch of referenceDigits) {
-//       carry = table[(carry + Number(ch)) % 10];
-//     }
-//     return String((10 - carry) % 10);
-//   }
-
-//   private generateQrrReference(input: string): string {
-//     // لازم يكون رقمي فقط
-//     const digits = String(input).replace(/\D/g, '');
-//     // خذي آخر 26 رقم (أو أقل) واعملي pad لليسار
-//     const base = digits.slice(-26).padStart(26, '0');
-//     const check = this.mod10Recursive(base);
-//     return base + check; // 27 digits
-//   }
-
-//   private buildQrPayload(data: any): string {
-//     const iban = data.creditorAccount.replace(/\s/g, '');
-//     const amount = Number(data.amount).toFixed(2);
-
-//     const useQrIban = this.isQrIban(iban);
-//     const referenceType = useQrIban ? 'QRR' : 'SCOR';
-
-//     const reference = useQrIban
-//       ? this.generateQrrReference(data.reference || '0')
-//       : this.generateRFReference(data.reference || 'INV');
-
-//     const creditorCountry = 'CH';
-//     const debtorCountry = (data.debtor.country || 'CH').toUpperCase();
-
-//     const lines = [
-//       'SPC',
-//       '0200',
-//       '1',
-//       iban,
-
-//       // Creditor (AdrTp=K) BUT with 7 reserved lines
-//       'K',
-//       'A&G Fiduciaire Sàrl',
-//       'Impasse du nouveau marché 7',
-//       '1723 Marly',
-//       '', // PstCd (empty for K)
-//       '', // TwnNm (empty for K)
-//       creditorCountry, // Ctry MUST be here
-
-//       // Ultimate creditor (7 empty lines) - must remain empty
-//       '',
-//       '',
-//       '',
-//       '',
-//       '',
-//       '',
-//       '',
-
-//       // Amount & currency
-//       amount,
-//       'CHF',
-
-//       // Debtor (AdrTp=K) BUT with 7 reserved lines
-//       'K',
-//       data.debtor.name,
-//       data.debtor.address,
-//       `${data.debtor.zip} ${data.debtor.city}`,
-//       '', // PstCd (empty for K)
-//       '', // TwnNm (empty for K)
-//       debtorCountry, // Ctry MUST be here
-
-//       // Reference
-//       referenceType,
-//       reference,
-
-//       // Additional information
-//       data.additionalInformation || '',
-
-//       // Trailer (must be last line)
-//       'EPD',
-//     ];
-
-//     // لازم يكون 31 بالضبط
-//     if (lines.length !== 31) {
-//       lines.forEach((v, i) => console.log(i + 1, JSON.stringify(v)));
-//       throw new Error(`Invalid QR payload line count: ${lines.length}`);
-//     }
-
-//     return lines.join('\r\n');
-//   }
-// }
-
+/* eslint-disable no-control-regex */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class QrBillService {
@@ -289,9 +119,7 @@ export class QrBillService {
       const headerTextX = logoX + (data.logo ? logoSize + mm(6) : 0);
 
       doc.font(fontBold).fontSize(16).fillColor('#000');
-      doc.text('Taxero.ch', headerTextX, headerTopY, {
-        width: contentW,
-      });
+      doc.text('Taxero.ch', headerTextX, headerTopY, { width: contentW });
 
       doc.font(fontBold).fontSize(9);
       doc.text('A&G Fiduciaire Sàrl', headerTextX, headerTopY + mm(7), {
@@ -305,7 +133,9 @@ export class QrBillService {
       doc.text('1752 Villars sur Glâne', headerTextX, headerTopY + mm(15), {
         width: contentW,
       });
-      doc.text('CHE-450.723.829 TVA', headerTextX, headerTopY + mm(19), {
+
+      // ✅ Label change: TVA -> VAT (design only)
+      doc.text('CHE-450.723.829 VAT', headerTextX, headerTopY + mm(19), {
         width: contentW,
       });
 
@@ -453,59 +283,68 @@ export class QrBillService {
         .stroke();
       doc.restore();
 
-      // Summary
+      // ===========================
+      // SUMMARY — FIXED math + match your photo (Price/Net/VAT/Total + % column)
+      // ===========================
       doc.y = lineY + mm(6);
 
-      const totalNet = amount;
+      // ✅ Keep the meaning you want:
+      // - Total (grandTotal) is the gross amount (e.g. 178.00)
+      // - Net is the base amount (100%)
+      // - VAT is 8.1% of Net
       const tvaRate = Number(data.tvaRate ?? 8.1);
-      const tvaValue = Number(data.tvaValue ?? (totalNet * tvaRate) / 100);
-      const grandTotal = Number(data.totalAmount ?? totalNet);
 
-      doc.font(fontRegular).fontSize(11).fillColor('#000');
-      doc.text('Total net', tableX + mm(2), doc.y, { width: tableW * 0.6 });
-      doc.text(moneyDisplay(totalNet), tableX, doc.y, {
-        width: tableW - mm(2),
-        align: 'right',
-      });
-
-      doc.moveDown(0.6);
-      doc.text(
-        `TVA ${tvaRate.toFixed(2)}% (${moneyDisplay(totalNet)})`,
-        tableX + mm(2),
-        doc.y,
-        {
-          width: tableW * 0.7,
-        },
+      // Your total is coming from data.totalAmount if provided, otherwise from "amount"
+      const grandTotal = Number(
+        data.totalAmount != null ? data.totalAmount : amount,
       );
-      doc.text(moneyDisplay(tvaValue), tableX, doc.y, {
-        width: tableW - mm(2),
-        align: 'right',
-      });
 
-      doc.moveDown(0.8);
+      // ✅ Compute Net + VAT from Total (gross), without touching QR payload logic
+      // Net = Total / (1 + rate)
+      const totalNet = grandTotal / (1 + tvaRate / 100);
+      const tvaValue = grandTotal - totalNet;
 
-      const totalY = doc.y;
-      doc.font(fontBold).fontSize(13).fillColor(BLUE);
-      doc.text('TOTAL CHF', tableX + mm(2), totalY, { width: tableW * 0.5 });
-      doc.text(moneyDisplay(grandTotal), tableX, totalY, {
-        width: tableW - mm(2),
-        align: 'right',
-      });
+      // Design-only: show a compact 3-col summary aligned right
+      const pctFromNet = (v: number) => {
+        if (!totalNet) return '';
+        return `${((v / totalNet) * 100).toFixed(1)}%`;
+      };
 
-      const ruleY1 = totalY + mm(6.5);
-      const ruleY2 = ruleY1 + mm(1.6);
-      doc.save();
-      doc.strokeColor(BLUE).lineWidth(1.4);
-      doc
-        .moveTo(tableX, ruleY1)
-        .lineTo(tableX + tableW, ruleY1)
-        .stroke();
-      doc.lineWidth(0.8);
-      doc
-        .moveTo(tableX, ruleY2)
-        .lineTo(tableX + tableW, ruleY2)
-        .stroke();
-      doc.restore();
+      const boxW = mm(62);
+      const boxX = tableX + tableW - boxW;
+      let boxY = doc.y;
+
+      const summaryRow = (
+        labelText: string,
+        valueText: string,
+        pctText: string,
+        isBold = false,
+      ) => {
+        doc.font(isBold ? fontBold : fontRegular).fontSize(isBold ? 10.5 : 10);
+        doc.fillColor('#000');
+        doc.text(labelText, boxX, boxY, { width: mm(18) });
+        doc.text(valueText, boxX + mm(18), boxY, {
+          width: mm(26),
+          align: 'right',
+        });
+        doc.text(pctText, boxX + mm(44), boxY, {
+          width: mm(18),
+          align: 'right',
+        });
+        boxY += mm(6);
+      };
+
+      // ✅ Percentages like your screenshot:
+      // Price = 108.1% (gross compared to net)
+      // Net = 100.0%
+      // VAT = 8.1%
+      summaryRow('Price', moneyDisplay(grandTotal), pctFromNet(grandTotal));
+      summaryRow('Net', moneyDisplay(totalNet), '100.0%');
+      summaryRow('VAT', moneyDisplay(tvaValue), `${tvaRate.toFixed(1)}%`);
+      summaryRow('Total', moneyDisplay(grandTotal), '', true);
+
+      // Keep a tiny gap before QR bill block
+      doc.y = Math.max(doc.y, boxY + mm(2));
 
       // ===========================
       // QR BILL BLOCK (safe positions to prevent extra pages)
@@ -513,7 +352,7 @@ export class QrBillService {
       const blockH = mm(92);
       const blockY = pageH - doc.page.margins.bottom - blockH;
       const blockX = contentX;
-      const blockW = contentW;
+      const blockW2 = contentW;
 
       // Clamp helper: guarantee all text stays INSIDE the QR block
       const clampY = (y: number) => Math.min(y, blockY + blockH - mm(6));
@@ -524,7 +363,7 @@ export class QrBillService {
       doc.strokeColor('#000').lineWidth(0.7).dash(4, { space: 3 });
       doc
         .moveTo(blockX, cutY)
-        .lineTo(blockX + blockW, cutY)
+        .lineTo(blockX + blockW2, cutY)
         .stroke();
       doc.undash();
       doc.restore();
@@ -554,13 +393,29 @@ export class QrBillService {
       const label = (x: number, y: number, t: string) => {
         doc.font(fontBold).fontSize(8).fillColor('#000').text(t, x, clampY(y));
       };
+
       const value = (x: number, y: number, t: string, opts: any = {}) => {
         doc
           .font(fontRegular)
           .fontSize(9)
           .fillColor('#000')
+          .text(t, x, clampY(y), { lineGap: 1.4, ...opts });
+      };
+
+      // ✅ Design-only: smaller + constrained receipt value text for readability
+      const receiptValue = (
+        x: number,
+        y: number,
+        t: string,
+        opts: any = {},
+      ) => {
+        doc
+          .font(fontRegular)
+          .fontSize(8.7)
+          .fillColor('#000')
           .text(t, x, clampY(y), {
-            lineGap: 1.5,
+            width: receiptW - mm(6),
+            lineGap: 1,
             ...opts,
           });
       };
@@ -570,33 +425,101 @@ export class QrBillService {
       const rY = blockY + mm(16);
 
       label(rX, rY, 'Compte / Payable à');
-      value(rX, rY + mm(4), formatIban(data.creditorAccount));
+      receiptValue(rX, rY + mm(4), formatIban(data.creditorAccount));
 
-      value(rX, rY + mm(10), 'A&G Fiduciaire Sàrl');
-      value(rX, rY + mm(14), 'Impasse du nouveau marché 7');
-      value(rX, rY + mm(18), '1723 Marly');
+      receiptValue(rX, rY + mm(10), 'A&G Fiduciaire Sàrl');
+      receiptValue(rX, rY + mm(14), 'Impasse du nouveau marché 7');
+      receiptValue(rX, rY + mm(18), '1723 Marly');
 
       label(rX, rY + mm(28), 'Référence');
-      value(rX, rY + mm(32), formatRefReadable(reference), {
+      receiptValue(rX, rY + mm(32), formatRefReadable(reference), {
         width: receiptW - mm(6),
       });
 
-      label(rX, rY + mm(44), 'Payable par');
-      value(rX, rY + mm(48), sanitize(data.debtor?.name), {
-        width: receiptW - mm(6),
-      });
-      value(rX, rY + mm(52), sanitize(data.debtor?.address), {
-        width: receiptW - mm(6),
-      });
-      value(
-        rX,
-        rY + mm(56),
-        `${sanitize(data.debtor?.zip)} ${sanitize(data.debtor?.city)}`.trim(),
-        { width: receiptW - mm(6) },
-      );
-
-      // Receipt bottom (currency/amount)
+      // ✅ Make "Payable par" readable (avoid overlap) + ellipsis for long text
+      // ---------------------------
+      // Receipt bottom (currency/amount) — reserve space FIRST
+      // ---------------------------
       const rbBaseY = blockY + blockH - mm(16);
+
+      // This is the Y above which "Payable par" must stop.
+      // (labels + values need room; add a little padding)
+      const bottomReservedTop = rbBaseY - mm(8);
+
+      // helper: fit text into a max height by truncating with ellipsis
+      const fitText = (text: string, maxWidth: number, maxHeight: number) => {
+        const t = (text ?? '').trim();
+        if (!t) return '';
+
+        // Quick accept
+        if (
+          doc.heightOfString(t, { width: maxWidth, lineGap: 1 }) <= maxHeight
+        ) {
+          return t;
+        }
+
+        // Truncate progressively
+        // (binary-ish loop without being heavy)
+        let lo = 0;
+        let hi = t.length;
+        let best = '…';
+        while (lo <= hi) {
+          const mid = Math.floor((lo + hi) / 2);
+          const candidate = t.slice(0, mid).trimEnd() + '…';
+          const h = doc.heightOfString(candidate, {
+            width: maxWidth,
+            lineGap: 1,
+          });
+
+          if (h <= maxHeight) {
+            best = candidate;
+            lo = mid + 1;
+          } else {
+            hi = mid - 1;
+          }
+        }
+        return best;
+      };
+
+      // ---------------------------
+      // "Payable par" — render as ONE fitted block (prevents overlap)
+      // ---------------------------
+      const payableLabelY = rY + mm(38);
+      label(rX, payableLabelY, 'Payable par');
+
+      const payableTextY = payableLabelY + mm(4);
+
+      // Remaining height available for debtor text
+      const availableH = Math.max(0, bottomReservedTop - payableTextY);
+
+      // Build debtor block (you can add country if you want)
+      const debtorBlock = [
+        sanitize(data.debtor?.name),
+        sanitize(data.debtor?.address),
+        [
+          sanitize(data.debtor?.zip),
+          sanitize(data.debtor?.city),
+          sanitize(data.debtor?.country),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .trim(),
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      // use receipt font sizing but enforce fit
+      doc.font(fontRegular).fontSize(8.7).fillColor('#000');
+      const fittedDebtor = fitText(debtorBlock, receiptW - mm(6), availableH);
+
+      doc.text(fittedDebtor, rX, clampY(payableTextY), {
+        width: receiptW - mm(6),
+        lineGap: 1,
+      });
+
+      // ---------------------------
+      // Now draw currency/amount at the bottom (no overlap possible)
+      // ---------------------------
       label(rX, rbBaseY - mm(5), 'Monnaie');
       label(rX + mm(18), rbBaseY - mm(5), 'Montant');
       value(rX, rbBaseY, 'CHF');
@@ -613,32 +536,64 @@ export class QrBillService {
       const pX = splitX + mm(8);
       const pY = blockY + mm(16);
 
-      // QR size (safer) + slightly higher to ensure under-amount stays inside block
+      // QR size
       const qrSize = mm(46);
       const qrX = pX;
       const qrY = pY + mm(6);
 
       doc.image(qrBuffer, qrX, qrY, { width: qrSize, height: qrSize });
 
-      // Swiss cross overlay
+      // ===========================
+      // ✅ Swiss cross overlay as IMAGE (your PNG) — design only
+      // ===========================
       const crossBox = mm(10);
       const cx = qrX + qrSize / 2 - crossBox / 2;
       const cy = qrY + qrSize / 2 - crossBox / 2;
 
+      // white background square behind it (keeps it clean)
       doc.save();
       doc.rect(cx, cy, crossBox, crossBox).fill('#fff');
-      doc.strokeColor('#000').lineWidth(1.4);
-      doc
-        .moveTo(cx + crossBox / 2, cy + mm(1.2))
-        .lineTo(cx + crossBox / 2, cy + crossBox - mm(1.2))
-        .stroke();
-      doc
-        .moveTo(cx + mm(1.2), cy + crossBox / 2)
-        .lineTo(cx + crossBox - mm(1.2), cy + crossBox / 2)
-        .stroke();
+
+      // Prefer:
+      // 1) env QR_CROSS_PATH
+      // 2) absolute /mnt/data/CH-Kreuz_7mm.png (your provided file)
+      // 3) project relative src/assets/CH-Kreuz_7mm.png
+      // If missing, fallback to drawn plus.
+      let crossPng: Buffer | null = null;
+      try {
+        const envPath = process.env.QR_CROSS_PATH
+          ? path.resolve(process.env.QR_CROSS_PATH)
+          : null;
+
+        const mntPath = '/mnt/data/CH-Kreuz_7mm.png';
+        const relPath = path.join(process.cwd(), 'src/assets/CH-Kreuz_7mm.png');
+
+        const chosen =
+          (envPath && fs.existsSync(envPath) && envPath) ||
+          (fs.existsSync(mntPath) && mntPath) ||
+          relPath;
+
+        if (fs.existsSync(chosen)) crossPng = fs.readFileSync(chosen);
+      } catch {
+        crossPng = null;
+      }
+
+      if (crossPng) {
+        doc.image(crossPng, cx, cy, { width: crossBox, height: crossBox });
+      } else {
+        doc.strokeColor('#000').lineWidth(1.4);
+        doc
+          .moveTo(cx + crossBox / 2, cy + mm(1.2))
+          .lineTo(cx + crossBox / 2, cy + crossBox - mm(1.2))
+          .stroke();
+        doc
+          .moveTo(cx + mm(1.2), cy + crossBox / 2)
+          .lineTo(cx + crossBox - mm(1.2), cy + crossBox / 2)
+          .stroke();
+      }
       doc.restore();
 
-      // Amount UNDER QR (clamped to avoid new pages)
+      // Amount UNDER QR
       const underY = clampY(qrY + qrSize + mm(6));
       label(qrX + mm(2), underY, 'Monnaie');
       label(qrX + mm(22), underY, 'Montant');
@@ -647,7 +602,7 @@ export class QrBillService {
 
       // Right text column
       const infoX = qrX + qrSize + mm(14);
-      const infoW = blockX + blockW - infoX - mm(2);
+      const infoW = blockX + blockW2 - infoX - mm(2);
 
       label(infoX, pY, 'Compte / Payable à');
       value(infoX, pY + mm(4), formatIban(data.creditorAccount), {

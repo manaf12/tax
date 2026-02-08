@@ -44,15 +44,22 @@ let FilesService = class FilesService {
         await this.minioService.uploadFile(objectName, file.buffer, file.mimetype);
         return objectName;
     }
-    async uploadFile(userId, declarationId, file, documentType, actorIsAdmin = false, deliveredForStep) {
+    isStaff(roles) {
+        const r = (roles ?? []);
+        return (r.includes(user_entity_1.UserRole.ADMIN) ||
+            r.includes(user_entity_1.UserRole.SUPER_ADMIN) ||
+            r.includes('admin') ||
+            r.includes('SUPER_ADMIN'));
+    }
+    async uploadFile(userId, declarationId, file, documentType, actorIsStaff = false, deliveredForStep) {
         const declaration = await this.ordersService.findDeclarationById(declarationId);
         const ownerUserId = declaration.clientProfile?.user?.id;
-        if (!actorIsAdmin && ownerUserId !== userId) {
+        if (!actorIsStaff && ownerUserId !== userId) {
             throw new common_1.ForbiddenException('Access to this declaration is forbidden.');
         }
-        if (!actorIsAdmin &&
+        if (!actorIsStaff &&
             (!deliveredForStep || deliveredForStep === 'documentsPreparation')) {
-            await this.ensureStep1Editable(declarationId, actorIsAdmin);
+            await this.ensureStep1Editable(declarationId, actorIsStaff);
             await this.reopenStep1IfConfirmed(declarationId, userId);
             await this.ensureStep1Started(declarationId, userId);
         }
@@ -61,7 +68,7 @@ let FilesService = class FilesService {
             ...(file.meta ?? {}),
             deliveredForStep: deliveredForStep ?? null,
             uploadedBy: userId,
-            uploaderRole: actorIsAdmin ? 'admin' : 'user',
+            uploaderRole: actorIsStaff ? 'admin' : 'user',
         };
         const fileEntity = this.filesRepository.create({
             originalName: file.originalname,
@@ -80,7 +87,7 @@ let FilesService = class FilesService {
         if (step && step.status === steps_1.StepStatus.DONE) {
             return savedFile;
         }
-        if (actorIsAdmin) {
+        if (actorIsStaff) {
             if (deliveredForStep) {
                 await this.ordersService.updateStep(declarationId, deliveredForStep, steps_1.StepStatus.IN_PROGRESS, userId, { adminFile: savedFile.id });
             }
@@ -106,8 +113,8 @@ let FilesService = class FilesService {
         const ownerUserId = declaration?.clientProfile?.user?.id;
         if (requestingUserId !== ownerUserId) {
             const requestingUser = await this.userService.findOneById(requestingUserId);
-            const isAdmin = requestingUser?.roles?.includes(user_entity_1.UserRole.ADMIN);
-            if (!isAdmin) {
+            const isStaff = this.isStaff(requestingUser?.roles);
+            if (!isStaff) {
                 throw new common_1.ForbiddenException('Not allowed to download this file.');
             }
             return this.minioService.getPresignedUrl(file.storagePath);
@@ -275,7 +282,7 @@ let FilesService = class FilesService {
         const declaration = await this.ordersService.findDeclarationById(declarationId, ['clientProfile', 'clientProfile.user']);
         if (!declaration)
             throw new common_1.NotFoundException('Declaration not found');
-        const isAdmin = roles?.includes('admin');
+        const isAdmin = this.isStaff(roles);
         if (!isAdmin) {
             const ownerUserId = declaration.clientProfile?.user?.id;
             if (ownerUserId !== userId)
@@ -332,8 +339,8 @@ let FilesService = class FilesService {
             });
         }
     }
-    async ensureStep1Editable(declarationId, actorIsAdmin) {
-        if (actorIsAdmin)
+    async ensureStep1Editable(declarationId, actorIsStaff) {
+        if (actorIsStaff)
             return;
         const decl = await this.ordersService.findDeclarationById(declarationId);
         const reviewStep = (decl.steps ?? []).find((s) => s.id === 'documentsReview');

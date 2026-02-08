@@ -65,8 +65,10 @@ let AdminService = class AdminService {
         const adminUser = await this.usersService.findOneById(adminId);
         if (!adminUser)
             throw new common_1.NotFoundException('Target admin user not found.');
-        if (!adminUser.roles?.includes(user_entity_1.UserRole.ADMIN)) {
-            throw new common_1.ForbiddenException('Target user is not an admin.');
+        const isStaff = adminUser.roles?.includes(user_entity_1.UserRole.ADMIN) ||
+            adminUser.roles?.includes(user_entity_1.UserRole.SUPER_ADMIN);
+        if (!isStaff) {
+            throw new common_1.ForbiddenException('Target user is not an admin or super admin.');
         }
         const updated = await this.ordersService.assignDeclarationsToAdmin(declarationIds, adminId, assignedById, note);
         return updated;

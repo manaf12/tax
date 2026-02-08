@@ -60,8 +60,9 @@ let OrdersController = class OrdersController {
         const declaration = await this.ordersService.findDeclarationById(declarationId, ['clientProfile']);
         if (!declaration)
             throw new common_1.NotFoundException('Declaration not found');
-        const isAdmin = req.user.roles?.includes(user_entity_1.UserRole.ADMIN);
-        if (declaration.clientProfile?.user?.id !== userId && !isAdmin) {
+        const roles = req.user?.roles ?? [];
+        const isStaff = roles.includes(user_entity_1.UserRole.ADMIN) || roles.includes(user_entity_1.UserRole.SUPER_ADMIN);
+        if (declaration.clientProfile?.user?.id !== userId && !isStaff) {
             throw new common_1.ForbiddenException('Not allowed to comment on this declaration');
         }
         const steps = Array.isArray(declaration.steps)
