@@ -31,6 +31,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.8",
     "@nestjs/typeorm": "^11.0.0",
+    "@sendgrid/mail": "^8.1.6",
     "bcrypt": "^6.0.0",
     "clamscan": "^2.4.0",
     "class-transformer": "^0.5.1",

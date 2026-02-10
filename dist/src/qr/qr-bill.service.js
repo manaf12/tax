@@ -50,7 +50,11 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 let QrBillService = class QrBillService {
     async generateQrBillPdf(data) {
-        const payload = this.buildQrPayload(data);
+        const amount = Number(data.amount || 0);
+        const tvaRate = Number(data.tvaRate ?? 8.1);
+        const grandTotal = Number(data.totalAmount != null ? data.totalAmount : amount);
+        const payloadData = { ...data, amount: grandTotal };
+        const payload = this.buildQrPayload(payloadData);
         const qrBuffer = await qrcode_1.default.toBuffer(payload, {
             type: 'png',
             errorCorrectionLevel: 'M',
@@ -208,9 +212,8 @@ let QrBillService = class QrBillService {
                 width: colUnitW,
                 align: 'center',
             });
-            const amount = Number(data.amount || 0);
-            doc.text(moneyDisplay(amount), tableX + colDescW + colQtyW + colUnitW, rowY + mm(1.8), { width: colUnitPriceW, align: 'right' });
-            doc.text(moneyDisplay(amount), tableX + colDescW + colQtyW + colUnitW + colUnitPriceW, rowY + mm(1.8), { width: colAmountW, align: 'right' });
+            doc.text(moneyDisplay(grandTotal), tableX + colDescW + colQtyW + colUnitW, rowY + mm(1.8), { width: colUnitPriceW, align: 'right' });
+            doc.text(moneyDisplay(grandTotal), tableX + colDescW + colQtyW + colUnitW + colUnitPriceW, rowY + mm(1.8), { width: colAmountW, align: 'right' });
             const lineY = rowY + rowH;
             doc.save();
             doc.strokeColor(BLUE).lineWidth(1.2);
@@ -220,36 +223,24 @@ let QrBillService = class QrBillService {
                 .stroke();
             doc.restore();
             doc.y = lineY + mm(6);
-            const tvaRate = Number(data.tvaRate ?? 8.1);
-            const grandTotal = Number(data.totalAmount != null ? data.totalAmount : amount);
             const totalNet = grandTotal / (1 + tvaRate / 100);
             const tvaValue = grandTotal - totalNet;
-            const pctFromNet = (v) => {
-                if (!totalNet)
-                    return '';
-                return `${((v / totalNet) * 100).toFixed(1)}%`;
-            };
-            const boxW = mm(62);
+            const boxW = mm(55);
             const boxX = tableX + tableW - boxW;
             let boxY = doc.y;
-            const summaryRow = (labelText, valueText, pctText, isBold = false) => {
-                doc.font(isBold ? fontBold : fontRegular).fontSize(isBold ? 10.5 : 10);
+            const summaryRow2 = (labelText, valueText, isBold = false) => {
+                doc.font(isBold ? fontBold : fontRegular).fontSize(isBold ? 10.8 : 10);
                 doc.fillColor('#000');
-                doc.text(labelText, boxX, boxY, { width: mm(18) });
-                doc.text(valueText, boxX + mm(18), boxY, {
-                    width: mm(26),
-                    align: 'right',
-                });
-                doc.text(pctText, boxX + mm(44), boxY, {
-                    width: mm(18),
+                doc.text(labelText, boxX, boxY, { width: mm(26) });
+                doc.text(valueText, boxX + mm(26), boxY, {
+                    width: boxW - mm(26),
                     align: 'right',
                 });
                 boxY += mm(6);
             };
-            summaryRow('Price', moneyDisplay(grandTotal), pctFromNet(grandTotal));
-            summaryRow('Net', moneyDisplay(totalNet), '100.0%');
-            summaryRow('VAT', moneyDisplay(tvaValue), `${tvaRate.toFixed(1)}%`);
-            summaryRow('Total', moneyDisplay(grandTotal), '', true);
+            summaryRow2('Net', moneyDisplay(totalNet));
+            summaryRow2(`VAT (${tvaRate.toFixed(1)}%)`, moneyDisplay(tvaValue));
+            summaryRow2('Total', moneyDisplay(grandTotal), true);
             doc.y = Math.max(doc.y, boxY + mm(2));
             const blockH = mm(92);
             const blockY = pageH - doc.page.margins.bottom - blockH;
@@ -314,32 +305,17 @@ let QrBillService = class QrBillService {
             });
             const rbBaseY = blockY + blockH - mm(16);
             const bottomReservedTop = rbBaseY - mm(8);
-            const fitText = (text, maxWidth, maxHeight) => {
+            const fitTextByFont = (text, maxWidth, maxHeight, startSize = 8.7, minSize = 6.5) => {
                 const t = (text ?? '').trim();
                 if (!t)
-                    return '';
-                if (doc.heightOfString(t, { width: maxWidth, lineGap: 1 }) <= maxHeight) {
-                    return t;
+                    return { text: '', fontSize: startSize };
+                for (let fs2 = startSize; fs2 >= minSize; fs2 -= 0.2) {
+                    doc.font(fontRegular).fontSize(fs2);
+                    const h = doc.heightOfString(t, { width: maxWidth, lineGap: 1 });
+                    if (h <= maxHeight)
+                        return { text: t, fontSize: fs2 };
                 }
-                let lo = 0;
-                let hi = t.length;
-                let best = '…';
-                while (lo <= hi) {
-                    const mid = Math.floor((lo + hi) / 2);
-                    const candidate = t.slice(0, mid).trimEnd() + '…';
-                    const h = doc.heightOfString(candidate, {
-                        width: maxWidth,
-                        lineGap: 1,
-                    });
-                    if (h <= maxHeight) {
-                        best = candidate;
-                        lo = mid + 1;
-                    }
-                    else {
-                        hi = mid - 1;
-                    }
-                }
-                return best;
+                return { text: t, fontSize: minSize };
             };
             const payableLabelY = rY + mm(38);
             label(rX, payableLabelY, 'Payable par');
@@ -348,21 +324,19 @@ let QrBillService = class QrBillService {
             const debtorBlock = [
                 sanitize(data.debtor?.name),
                 sanitize(data.debtor?.address),
-                [
-                    sanitize(data.debtor?.zip),
-                    sanitize(data.debtor?.city),
-                    sanitize(data.debtor?.country),
-                ]
+                [sanitize(data.debtor?.zip), sanitize(data.debtor?.city)]
                     .filter(Boolean)
                     .join(' ')
                     .trim(),
+                sanitize(data.debtor?.country),
             ]
                 .filter(Boolean)
                 .join('\n');
-            doc.font(fontRegular).fontSize(8.7).fillColor('#000');
-            const fittedDebtor = fitText(debtorBlock, receiptW - mm(6), availableH);
-            doc.text(fittedDebtor, rX, clampY(payableTextY), {
-                width: receiptW - mm(6),
+            const maxW = receiptW - mm(6);
+            const fitted = fitTextByFont(debtorBlock, maxW, availableH);
+            doc.font(fontRegular).fontSize(fitted.fontSize).fillColor('#000');
+            doc.text(fitted.text, rX, clampY(payableTextY), {
+                width: maxW,
                 lineGap: 1,
             });
             label(rX, rbBaseY - mm(5), 'Monnaie');

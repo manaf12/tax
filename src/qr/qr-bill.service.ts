@@ -13,8 +13,24 @@ import * as path from 'path';
 @Injectable()
 export class QrBillService {
   async generateQrBillPdf(data: any): Promise<Buffer> {
-    // --- NO LOGIC CHANGE: payload generation stays identical ---
-    const payload = this.buildQrPayload(data);
+    // ===========================
+    // ✅ ADJUSTMENT #1 (NO buildQrPayload LOGIC CHANGE):
+    // Ensure the AUTOMATED QR amount includes VAT by feeding the gross total
+    // into the payload (buildQrPayload remains untouched).
+    // ===========================
+    const amount = Number(data.amount || 0);
+    const tvaRate = Number(data.tvaRate ?? 8.1);
+
+    // Gross total (includes VAT) comes from data.totalAmount if provided, else data.amount
+    const grandTotal = Number(
+      data.totalAmount != null ? data.totalAmount : amount,
+    );
+
+    // Feed gross total to QR payload without changing buildQrPayload itself
+    const payloadData = { ...data, amount: grandTotal };
+
+    // --- NO LOGIC CHANGE: payload generation stays identical (function unchanged) ---
+    const payload = this.buildQrPayload(payloadData);
 
     // --- NO LOGIC CHANGE: QR generation stays identical ---
     const qrBuffer = await QRCode.toBuffer(payload, {
@@ -259,15 +275,15 @@ export class QrBillService {
         align: 'center',
       });
 
-      const amount = Number(data.amount || 0);
+      // ✅ Use gross total for the displayed line (so item amount matches summary/QR)
       doc.text(
-        moneyDisplay(amount),
+        moneyDisplay(grandTotal),
         tableX + colDescW + colQtyW + colUnitW,
         rowY + mm(1.8),
         { width: colUnitPriceW, align: 'right' },
       );
       doc.text(
-        moneyDisplay(amount),
+        moneyDisplay(grandTotal),
         tableX + colDescW + colQtyW + colUnitW + colUnitPriceW,
         rowY + mm(1.8),
         { width: colAmountW, align: 'right' },
@@ -284,64 +300,47 @@ export class QrBillService {
       doc.restore();
 
       // ===========================
-      // SUMMARY — FIXED math + match your photo (Price/Net/VAT/Total + % column)
+      // SUMMARY — ✅ ADJUSTMENT #2:
+      // Remove "Price" line and remove % column
+      // Show:
+      // Net 45,33
+      // VAT (8.1%) 3,67
+      // Total 49,00
+      // Align right
       // ===========================
       doc.y = lineY + mm(6);
 
-      // ✅ Keep the meaning you want:
-      // - Total (grandTotal) is the gross amount (e.g. 178.00)
-      // - Net is the base amount (100%)
-      // - VAT is 8.1% of Net
-      const tvaRate = Number(data.tvaRate ?? 8.1);
-
-      // Your total is coming from data.totalAmount if provided, otherwise from "amount"
-      const grandTotal = Number(
-        data.totalAmount != null ? data.totalAmount : amount,
-      );
-
-      // ✅ Compute Net + VAT from Total (gross), without touching QR payload logic
-      // Net = Total / (1 + rate)
+      // Compute Net + VAT from Total (gross)
       const totalNet = grandTotal / (1 + tvaRate / 100);
       const tvaValue = grandTotal - totalNet;
 
-      // Design-only: show a compact 3-col summary aligned right
-      const pctFromNet = (v: number) => {
-        if (!totalNet) return '';
-        return `${((v / totalNet) * 100).toFixed(1)}%`;
-      };
-
-      const boxW = mm(62);
+      const boxW = mm(55);
       const boxX = tableX + tableW - boxW;
       let boxY = doc.y;
 
-      const summaryRow = (
+      const summaryRow2 = (
         labelText: string,
         valueText: string,
-        pctText: string,
         isBold = false,
       ) => {
-        doc.font(isBold ? fontBold : fontRegular).fontSize(isBold ? 10.5 : 10);
+        doc.font(isBold ? fontBold : fontRegular).fontSize(isBold ? 10.8 : 10);
         doc.fillColor('#000');
-        doc.text(labelText, boxX, boxY, { width: mm(18) });
-        doc.text(valueText, boxX + mm(18), boxY, {
-          width: mm(26),
+
+        // label left inside the right-aligned box
+        doc.text(labelText, boxX, boxY, { width: mm(26) });
+
+        // value aligned right
+        doc.text(valueText, boxX + mm(26), boxY, {
+          width: boxW - mm(26),
           align: 'right',
         });
-        doc.text(pctText, boxX + mm(44), boxY, {
-          width: mm(18),
-          align: 'right',
-        });
+
         boxY += mm(6);
       };
 
-      // ✅ Percentages like your screenshot:
-      // Price = 108.1% (gross compared to net)
-      // Net = 100.0%
-      // VAT = 8.1%
-      summaryRow('Price', moneyDisplay(grandTotal), pctFromNet(grandTotal));
-      summaryRow('Net', moneyDisplay(totalNet), '100.0%');
-      summaryRow('VAT', moneyDisplay(tvaValue), `${tvaRate.toFixed(1)}%`);
-      summaryRow('Total', moneyDisplay(grandTotal), '', true);
+      summaryRow2('Net', moneyDisplay(totalNet));
+      summaryRow2(`VAT (${tvaRate.toFixed(1)}%)`, moneyDisplay(tvaValue));
+      summaryRow2('Total', moneyDisplay(grandTotal), true);
 
       // Keep a tiny gap before QR bill block
       doc.y = Math.max(doc.y, boxY + mm(2));
@@ -436,49 +435,38 @@ export class QrBillService {
         width: receiptW - mm(6),
       });
 
-      // ✅ Make "Payable par" readable (avoid overlap) + ellipsis for long text
       // ---------------------------
       // Receipt bottom (currency/amount) — reserve space FIRST
       // ---------------------------
       const rbBaseY = blockY + blockH - mm(16);
 
       // This is the Y above which "Payable par" must stop.
-      // (labels + values need room; add a little padding)
       const bottomReservedTop = rbBaseY - mm(8);
 
-      // helper: fit text into a max height by truncating with ellipsis
-      const fitText = (text: string, maxWidth: number, maxHeight: number) => {
+      // ===========================
+      // ✅ ADJUSTMENT #3:
+      // Address must be entirely visible bottom-left:
+      // Instead of truncating with ellipsis, auto-reduce font size until it fits.
+      // ===========================
+      const fitTextByFont = (
+        text: string,
+        maxWidth: number,
+        maxHeight: number,
+        startSize = 8.7,
+        minSize = 6.5,
+      ) => {
         const t = (text ?? '').trim();
-        if (!t) return '';
+        if (!t) return { text: '', fontSize: startSize };
 
-        // Quick accept
-        if (
-          doc.heightOfString(t, { width: maxWidth, lineGap: 1 }) <= maxHeight
-        ) {
-          return t;
+        // Try decreasing font size until it fits
+        for (let fs2 = startSize; fs2 >= minSize; fs2 -= 0.2) {
+          doc.font(fontRegular).fontSize(fs2);
+          const h = doc.heightOfString(t, { width: maxWidth, lineGap: 1 });
+          if (h <= maxHeight) return { text: t, fontSize: fs2 };
         }
 
-        // Truncate progressively
-        // (binary-ish loop without being heavy)
-        let lo = 0;
-        let hi = t.length;
-        let best = '…';
-        while (lo <= hi) {
-          const mid = Math.floor((lo + hi) / 2);
-          const candidate = t.slice(0, mid).trimEnd() + '…';
-          const h = doc.heightOfString(candidate, {
-            width: maxWidth,
-            lineGap: 1,
-          });
-
-          if (h <= maxHeight) {
-            best = candidate;
-            lo = mid + 1;
-          } else {
-            hi = mid - 1;
-          }
-        }
-        return best;
+        // If still too long, keep min size (will wrap as much as possible)
+        return { text: t, fontSize: minSize };
       };
 
       // ---------------------------
@@ -492,28 +480,25 @@ export class QrBillService {
       // Remaining height available for debtor text
       const availableH = Math.max(0, bottomReservedTop - payableTextY);
 
-      // Build debtor block (you can add country if you want)
+      // Build debtor block (include country if provided)
       const debtorBlock = [
         sanitize(data.debtor?.name),
         sanitize(data.debtor?.address),
-        [
-          sanitize(data.debtor?.zip),
-          sanitize(data.debtor?.city),
-          sanitize(data.debtor?.country),
-        ]
+        [sanitize(data.debtor?.zip), sanitize(data.debtor?.city)]
           .filter(Boolean)
           .join(' ')
           .trim(),
+        sanitize(data.debtor?.country),
       ]
         .filter(Boolean)
         .join('\n');
 
-      // use receipt font sizing but enforce fit
-      doc.font(fontRegular).fontSize(8.7).fillColor('#000');
-      const fittedDebtor = fitText(debtorBlock, receiptW - mm(6), availableH);
+      const maxW = receiptW - mm(6);
+      const fitted = fitTextByFont(debtorBlock, maxW, availableH);
 
-      doc.text(fittedDebtor, rX, clampY(payableTextY), {
-        width: receiptW - mm(6),
+      doc.font(fontRegular).fontSize(fitted.fontSize).fillColor('#000');
+      doc.text(fitted.text, rX, clampY(payableTextY), {
+        width: maxW,
         lineGap: 1,
       });
 
@@ -523,7 +508,7 @@ export class QrBillService {
       label(rX, rbBaseY - mm(5), 'Monnaie');
       label(rX + mm(18), rbBaseY - mm(5), 'Montant');
       value(rX, rbBaseY, 'CHF');
-      value(rX + mm(18), rbBaseY, moneyPayload(grandTotal));
+      value(rX + mm(18), rbBaseY, moneyPayload(grandTotal)); // ✅ gross amount
 
       // Point de dépôt centered in receipt column
       doc.font(fontBold).fontSize(8).fillColor('#000');
@@ -598,7 +583,7 @@ export class QrBillService {
       label(qrX + mm(2), underY, 'Monnaie');
       label(qrX + mm(22), underY, 'Montant');
       value(qrX + mm(2), underY + mm(5), 'CHF');
-      value(qrX + mm(22), underY + mm(5), moneyPayload(grandTotal));
+      value(qrX + mm(22), underY + mm(5), moneyPayload(grandTotal)); // ✅ gross amount
 
       // Right text column
       const infoX = qrX + qrSize + mm(14);
