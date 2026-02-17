@@ -18,16 +18,20 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const tax_declaration_entity_1 = require("../orders/tax-declaration.entity");
 const order_service_1 = require("../orders/order.service");
+const steps_1 = require("../types/steps");
 const users_service_1 = require("../users/users.service");
 const user_entity_1 = require("../users/user.entity");
+const email_service_1 = require("../email/email.service");
 let AdminService = class AdminService {
     taxDeclarationRepository;
     ordersService;
     usersService;
-    constructor(taxDeclarationRepository, ordersService, usersService) {
+    emailService;
+    constructor(taxDeclarationRepository, ordersService, usersService, emailService) {
         this.taxDeclarationRepository = taxDeclarationRepository;
         this.ordersService = ordersService;
         this.usersService = usersService;
+        this.emailService = emailService;
     }
     async getPaidDeclarations() {
         return this.taxDeclarationRepository.find({
@@ -51,6 +55,28 @@ let AdminService = class AdminService {
     async reviewDeclaration(declarationId, adminId, status, note) {
         const decl = await this.getDeclarationDetailsForAdmin(declarationId);
         const updatedDecl = await this.ordersService.updateStep(declarationId, 'documentsReview', status.status, adminId, { note, filesReviewed: decl.files?.map((f) => f.id) ?? [] });
+        const isAccepted = status.status === steps_1.StepStatus.DONE;
+        const email = decl.clientProfile?.user?.email;
+        const firstName = decl.clientProfile?.firstName;
+        const lastName = decl.clientProfile?.lastName;
+        const taxablePerson = [firstName, lastName]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+        const taxYear = decl.questionnaireSnapshot?.taxYear ??
+            decl.questionnaireSnapshot?.step1Answers?.taxYear;
+        if (isAccepted && email) {
+            void this.emailService
+                .sendStep2Reviewed({
+                email,
+                declarationId,
+                firstName,
+                taxYear,
+                taxablePerson,
+                note,
+            })
+                .catch((e) => console.log(e));
+        }
         return updatedDecl;
     }
     async updateDeclarationStep(declarationId, adminId, stepId, newStatus, meta) {
@@ -59,6 +85,52 @@ let AdminService = class AdminService {
             throw new common_1.BadRequestException(`Invalid or unauthorized step to update: ${stepId}`);
         }
         const updatedDecl = await this.ordersService.updateStep(declarationId, stepId, newStatus, adminId, meta);
+        if (newStatus === steps_1.StepStatus.DONE) {
+            const decl = await this.getDeclarationDetailsForAdmin(declarationId);
+            const clientEmail = decl.clientProfile?.user?.email;
+            if (clientEmail) {
+                void (async () => {
+                    if (stepId === 'taxPreparation') {
+                        const firstName = decl.clientProfile?.firstName;
+                        const lastName = decl.clientProfile?.lastName;
+                        const taxablePerson = [firstName, lastName]
+                            .filter(Boolean)
+                            .join(' ')
+                            .trim();
+                        const taxYear = decl.questionnaireSnapshot?.taxYear ??
+                            decl.questionnaireSnapshot?.step1Answers?.taxYear;
+                        const meetingAgendaUrl = process.env.MEETING_AGENDA_URL;
+                        if (!meetingAgendaUrl)
+                            throw new Error('MEETING_AGENDA_URL is missing');
+                        await this.emailService.sendTaxPreparationDone({
+                            email: clientEmail,
+                            declarationId,
+                            firstName,
+                            taxYear,
+                            taxablePerson,
+                            meetingAgendaUrl,
+                        });
+                    }
+                    else if (stepId === 'submission') {
+                        const firstName = decl.clientProfile?.firstName;
+                        const lastName = decl.clientProfile?.lastName;
+                        const taxablePerson = [firstName, lastName]
+                            .filter(Boolean)
+                            .join(' ')
+                            .trim();
+                        const taxYear = decl.questionnaireSnapshot?.taxYear ??
+                            decl.questionnaireSnapshot?.step1Answers?.taxYear;
+                        await this.emailService.sendSubmissionDone({
+                            email: clientEmail,
+                            declarationId,
+                            firstName,
+                            taxYear,
+                            taxablePerson,
+                        });
+                    }
+                })().catch((e) => console.log(e));
+            }
+        }
         return updatedDecl;
     }
     async assignDeclarations(declarationIds, adminId, assignedById, note) {
@@ -106,6 +178,7 @@ exports.AdminService = AdminService = __decorate([
     __param(0, (0, typeorm_1.InjectRepository)(tax_declaration_entity_1.TaxDeclaration)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         order_service_1.OrdersService,
-        users_service_1.UsersService])
+        users_service_1.UsersService,
+        email_service_1.EmailService])
 ], AdminService);
 //# sourceMappingURL=admin.service.js.map

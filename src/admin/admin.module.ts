@@ -7,6 +7,7 @@ import { TaxDeclaration } from '../orders/tax-declaration.entity'; // نحتاج
 import { NotificationsModule } from '../notifications/notifications.module';
 import { FilesModule } from 'src/files/files.module';
 import { UsersModule } from 'src/users/user.module';
+import { EmailModule } from 'src/email/email.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { UsersModule } from 'src/users/user.module';
     forwardRef(() => OrdersModule),
     FilesModule,
     UsersModule,
+    EmailModule,
   ],
   providers: [AdminService],
   controllers: [AdminController],

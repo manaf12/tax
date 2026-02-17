@@ -3,11 +3,13 @@ import { TaxDeclaration, DeclarationStatus } from '../orders/tax-declaration.ent
 import { OrdersService } from '../orders/order.service';
 import { Step, StepStatus } from 'src/types/steps';
 import { UsersService } from 'src/users/users.service';
+import { EmailService } from 'src/email/email.service';
 export declare class AdminService {
     private taxDeclarationRepository;
     private readonly ordersService;
     private readonly usersService;
-    constructor(taxDeclarationRepository: Repository<TaxDeclaration>, ordersService: OrdersService, usersService: UsersService);
+    private readonly emailService;
+    constructor(taxDeclarationRepository: Repository<TaxDeclaration>, ordersService: OrdersService, usersService: UsersService, emailService: EmailService);
     getPaidDeclarations(): Promise<TaxDeclaration[]>;
     completeDeclaration(declarationId: string, adminId: string): Promise<TaxDeclaration>;
     getDeclarationDetailsForAdmin(declarationId: string): Promise<TaxDeclaration>;

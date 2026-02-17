@@ -62,6 +62,8 @@ let EmailService = EmailService_1 = class EmailService {
     }
     async sendMail(to, subject, html) {
         const from = process.env.EMAIL_FROM;
+        if (!from)
+            throw new Error('EMAIL_FROM is missing');
         try {
             await this.transporter.sendMail({ from, to, subject, html });
             this.logger.log(`Email sent to ${to} subject=${subject}`);
@@ -71,15 +73,206 @@ let EmailService = EmailService_1 = class EmailService {
             throw err;
         }
     }
-    async sendPasswordReset(email, tokenComposite) {
-        const url = `${process.env.APP_URL}/auth/reset-password?token=${encodeURIComponent(tokenComposite)}`;
-        const html = `<p>Click the link to reset password (expires in 1 hour):</p><p><a href="${url}">${url}</a></p>`;
-        await this.sendMail(email, 'Reset your password', html);
+    async sendWelcomeEmail(params) {
+        const { email, firstName } = params;
+        const subject = 'Bienvenue sur Taxero.ch';
+        const html = `
+    <p>Bonjour${firstName ? ` ${this.escapeHtml(firstName)}` : ''},</p>
+
+    <p><b>Bienvenue sur Taxero.ch !</b></p>
+
+    <p>
+      Votre compte a été créé avec succès.
+      Vous pouvez désormais commencer votre déclaration d’impôt suisse en toute simplicité.
+    </p>
+
+    <p>
+      Connectez-vous à votre espace client à tout moment pour démarrer ou poursuivre votre démarche.
+    </p>
+
+    <p>
+      Cordialement,<br/>
+      L’équipe Taxero.ch
+    </p>
+  `;
+        await this.sendMail(email, subject, html);
     }
-    async sendEmailVerification(email, tokenComposite) {
-        const url = `${process.env.APP_URL}/auth/verify-email?token=${encodeURIComponent(tokenComposite)}`;
-        const html = `<p>Click to verify your email:</p><p><a href="${url}">${url}</a></p>`;
-        await this.sendMail(email, 'Verify your email', html);
+    async sendStep1Confirmed(params) {
+        const { email, firstName, taxYear, taxablePerson, declarationId } = params;
+        const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+        const subject = 'Documents reçus — vérification en cours';
+        const html = `
+    <p>Bonjour ${this.escapeHtml(firstName ?? '')}${firstName ? ',' : ','}</p>
+
+    <p>
+      Nous avons bien reçu tous vos documents pour la déclaration fiscale
+      <b>${this.escapeHtml(String(taxYear ?? ''))}</b>
+      ${taxablePerson ? `, <b>${this.escapeHtml(taxablePerson)}</b>` : ''}.
+    </p>
+
+    <p>Nous procédons maintenant à leur vérification.</p>
+
+    <p>
+      Suivre l’avancement :<br/>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    </p>
+
+    <p>
+      Cordialement,<br/>
+      L’équipe Taxero.ch
+    </p>
+  `;
+        await this.sendMail(email, subject, html);
+    }
+    async sendStep2Reviewed(params) {
+        const { email, declarationId, firstName, taxYear, taxablePerson, note } = params;
+        const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+        const safeNote = note && note.trim().length
+            ? `<p><b>Note :</b><br/>${this.escapeHtml(note)}</p>`
+            : '';
+        const subject = 'Documents validés — préparation de votre déclaration';
+        const html = `
+    <p>Bonjour${firstName ? ` ${this.escapeHtml(firstName)}` : ''},</p>
+
+    <p>
+      Tous vos documents ont été validés pour la déclaration
+      <b>${this.escapeHtml(String(taxYear ?? ''))}</b>
+      ${taxablePerson ? `, <b>${this.escapeHtml(taxablePerson)}</b>` : ''}.
+    </p>
+
+    <p>Nous préparons maintenant votre déclaration.</p>
+
+    <p>
+      Tableau de bord :<br/>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    </p>
+
+    ${safeNote}
+
+    <p>
+      Cordialement,<br/>
+      L’équipe Taxero.ch
+    </p>
+  `;
+        await this.sendMail(email, subject, html);
+    }
+    async sendTaxPreparationDone(params) {
+        const { email, declarationId, firstName, taxYear, taxablePerson, meetingAgendaUrl, } = params;
+        const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+        const subject = 'Votre déclaration est prête';
+        const html = `
+    <p>Bonjour${firstName ? ` ${this.escapeHtml(firstName)}` : ''},</p>
+
+    <p>
+      Votre déclaration <b>${this.escapeHtml(String(taxYear ?? ''))}</b>
+      ${taxablePerson ? `, <b>${this.escapeHtml(taxablePerson)}</b>` : ''}
+      est prête.
+    </p>
+
+    <p>
+      Vérifier et valider :
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    </p>
+
+    <p>
+      Afin de revoir votre déclaration d'impôt avec l'un de nos experts, prenez rendez-vous via le lien suivant:<br/>
+      <a href="${this.escapeHtml(meetingAgendaUrl)}">${this.escapeHtml(meetingAgendaUrl)}</a>
+    </p>
+
+    <p>
+      Ce rendez-vous est inclus dans les offres <b>premium</b> et <b>confort</b>.<br/>
+      Si vous avez optez pour l'offre <b>standard</b>, le rendez-vous est facturé <b>CHF 120.-</b>.
+    </p>
+
+    <p>
+      Cordialement,<br/>
+      L’équipe Taxero.ch
+    </p>
+  `;
+        await this.sendMail(email, subject, html);
+    }
+    async sendSubmissionDone(params) {
+        const { email, declarationId, firstName, taxYear, taxablePerson } = params;
+        const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+        const subject = 'Déclaration soumise avec succès';
+        const html = `
+    <p>Bonjour${firstName ? ` ${this.escapeHtml(firstName)}` : ''},</p>
+
+    <p>
+      Votre déclaration fiscale
+      <b>${this.escapeHtml(String(taxYear ?? ''))}</b>
+      ${taxablePerson ? `, <b>${this.escapeHtml(taxablePerson)}</b>` : ''}
+      a été soumise avec succès.
+    </p>
+
+    <p>
+      La quittance d’envoi ainsi que la déclaration d’impôt soumise sont disponibles sur Taxero.ch :<br/>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    </p>
+
+    <p>
+      Dès réception de votre avis de taxation, vous pourrez le téléverser dans l’étape 5 de votre déclaration d’impôt :<br/>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    </p>
+
+    <p><b>Avez-vous apprécié notre service ?</b><br/>
+      N’hésitez pas à nous recommander auprès de votre entourage et à bénéficier de notre programme de parrainage :
+    </p>
+
+    <ul>
+      <li>3 recommandations validées → bon de CHF 100 (restaurant partenaire ou crédit pour votre prochaine déclaration)</li>
+      <li>5 recommandations validées → bon de CHF 200 (restaurant partenaire ou crédit pour votre prochaine déclaration)</li>
+      <li>10 recommandations validées → bon de CHF 200 + CHF 500 en espèces</li>
+    </ul>
+
+    <p>
+      Pour en bénéficier, la personne parrainée doit simplement mentionner votre nom complet dans le champ
+      « Référencement » lors de sa demande.
+    </p>
+
+    <p>Merci pour votre confiance et votre soutien.</p>
+
+    <p>
+      Cordialement,<br/>
+      L’équipe Taxero.ch
+    </p>
+  `;
+        await this.sendMail(email, subject, html);
+    }
+    async sendDownloadConfirmed(params) {
+        const { email, declarationId, firstName, taxYear, taxablePerson } = params;
+        const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+        const subject = 'Projet validé — soumission en cours';
+        const html = `
+    <p>Bonjour${firstName ? ` ${this.escapeHtml(firstName)}` : ''},</p>
+
+    <p>
+      Merci d’avoir validé le projet de votre déclaration
+      <b>${this.escapeHtml(String(taxYear ?? ''))}</b>
+      ${taxablePerson ? `, <b>${this.escapeHtml(taxablePerson)}</b>` : ''}.
+    </p>
+
+    <p>Nous procédons maintenant à la soumission.</p>
+
+    <p>
+      Tableau de bord :<br/>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    </p>
+
+    <p>
+      Cordialement,<br/>
+      L’équipe Taxero.ch
+    </p>
+  `;
+        await this.sendMail(email, subject, html);
+    }
+    escapeHtml(input) {
+        return input
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
     }
 };
 exports.EmailService = EmailService;

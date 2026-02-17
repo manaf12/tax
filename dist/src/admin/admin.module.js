@@ -16,6 +16,7 @@ const tax_declaration_entity_1 = require("../orders/tax-declaration.entity");
 const notifications_module_1 = require("../notifications/notifications.module");
 const files_module_1 = require("../files/files.module");
 const user_module_1 = require("../users/user.module");
+const email_module_1 = require("../email/email.module");
 let AdminModule = class AdminModule {
 };
 exports.AdminModule = AdminModule;
@@ -27,6 +28,7 @@ exports.AdminModule = AdminModule = __decorate([
             (0, common_1.forwardRef)(() => orders_module_1.OrdersModule),
             files_module_1.FilesModule,
             user_module_1.UsersModule,
+            email_module_1.EmailModule,
         ],
         providers: [admin_service_1.AdminService],
         controllers: [admin_controller_1.AdminController],

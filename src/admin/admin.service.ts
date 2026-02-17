@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   BadRequestException,
   ForbiddenException,
@@ -14,6 +16,7 @@ import { OrdersService } from '../orders/order.service';
 import { Step, StepStatus } from 'src/types/steps';
 import { UsersService } from 'src/users/users.service';
 import { UserRole } from 'src/users/user.entity';
+import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class AdminService {
@@ -22,6 +25,7 @@ export class AdminService {
     private taxDeclarationRepository: Repository<TaxDeclaration>,
     private readonly ordersService: OrdersService,
     private readonly usersService: UsersService,
+    private readonly emailService: EmailService,
   ) {}
 
   /**
@@ -74,6 +78,7 @@ export class AdminService {
     note?: string,
   ): Promise<TaxDeclaration> {
     const decl = await this.getDeclarationDetailsForAdmin(declarationId);
+
     const updatedDecl = await this.ordersService.updateStep(
       declarationId,
       'documentsReview',
@@ -82,8 +87,36 @@ export class AdminService {
       { note, filesReviewed: decl.files?.map((f) => f.id) ?? [] },
     );
 
+    const isAccepted = status.status === StepStatus.DONE;
+    const email = decl.clientProfile?.user?.email;
+
+    const firstName = decl.clientProfile?.firstName;
+    const lastName = decl.clientProfile?.lastName;
+    const taxablePerson = [firstName, lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    const taxYear =
+      (decl.questionnaireSnapshot as any)?.taxYear ??
+      (decl.questionnaireSnapshot as any)?.step1Answers?.taxYear;
+
+    if (isAccepted && email) {
+      void this.emailService
+        .sendStep2Reviewed({
+          email,
+          declarationId,
+          firstName,
+          taxYear,
+          taxablePerson,
+          note,
+        })
+        .catch((e) => console.log(e));
+    }
+
     return updatedDecl;
   }
+
   /**
    * @param declarationId The ID of the declaration.
    * @param adminId The ID of the admin performing the action.
@@ -112,6 +145,62 @@ export class AdminService {
       adminId,
       meta,
     );
+
+    if (newStatus === StepStatus.DONE) {
+      // ✅ load relations to get email reliably
+      const decl = await this.getDeclarationDetailsForAdmin(declarationId);
+      const clientEmail = decl.clientProfile?.user?.email;
+
+      if (clientEmail) {
+        // const note = meta?.note as string | undefined;
+
+        void (async () => {
+          if (stepId === 'taxPreparation') {
+            const firstName = decl.clientProfile?.firstName;
+            const lastName = decl.clientProfile?.lastName;
+            const taxablePerson = [firstName, lastName]
+              .filter(Boolean)
+              .join(' ')
+              .trim();
+
+            const taxYear =
+              (decl.questionnaireSnapshot as any)?.taxYear ??
+              (decl.questionnaireSnapshot as any)?.step1Answers?.taxYear;
+
+            const meetingAgendaUrl = process.env.MEETING_AGENDA_URL;
+            if (!meetingAgendaUrl)
+              throw new Error('MEETING_AGENDA_URL is missing');
+
+            await this.emailService.sendTaxPreparationDone({
+              email: clientEmail,
+              declarationId,
+              firstName,
+              taxYear,
+              taxablePerson,
+              meetingAgendaUrl,
+            });
+          } else if (stepId === 'submission') {
+            const firstName = decl.clientProfile?.firstName;
+            const lastName = decl.clientProfile?.lastName;
+            const taxablePerson = [firstName, lastName]
+              .filter(Boolean)
+              .join(' ')
+              .trim();
+
+            const taxYear =
+              (decl.questionnaireSnapshot as any)?.taxYear ??
+              (decl.questionnaireSnapshot as any)?.step1Answers?.taxYear;
+            await this.emailService.sendSubmissionDone({
+              email: clientEmail,
+              declarationId,
+              firstName,
+              taxYear,
+              taxablePerson,
+            });
+          }
+        })().catch((e) => console.log(e));
+      }
+    }
 
     return updatedDecl;
   }

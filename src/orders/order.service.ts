@@ -20,6 +20,7 @@ import { Pricing } from 'src/pricing/pricing.entity';
 import { PricingStatus } from 'src/pricing/pricing-status.enum';
 import { Step } from '../types/steps'; // عدّل المسار بحسب مشروعك
 import { StepStatus } from '../types/steps';
+import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class OrdersService {
@@ -32,6 +33,7 @@ export class OrdersService {
     @InjectRepository(Pricing)
     private pricingRepository: Repository<Pricing>,
     private dataSource: DataSource,
+    private readonly emailService: EmailService,
   ) {}
   private isStaff(roles: UserRole[] = []): boolean {
     return (
@@ -474,21 +476,21 @@ export class OrdersService {
       'clientProfile.user',
       'files',
     ]);
+
     if (decl.clientProfile.user.id !== userId) {
       throw new ForbiddenException('You do not own this declaration.');
     }
+
     if (fileId) {
       const file = decl.files?.find((f) => f.id === fileId);
-      if (!file) {
+      if (!file)
         throw new BadRequestException('File not found in this declaration.');
-      }
     } else {
       const hasStepFile = decl.files?.some(
         (f) => f.meta?.deliveredForStep === stepId,
       );
-      if (!hasStepFile) {
+      if (!hasStepFile)
         throw new BadRequestException('No file found for this step.');
-      }
     }
 
     await this.updateStep(declarationId, stepId, StepStatus.DONE, userId, {
@@ -501,10 +503,32 @@ export class OrdersService {
         { id: declarationId },
         { currentStep: 5 },
       );
-      console.log(
-        `Declaration ${declarationId} has been moved to step 5 after user confirmation.`,
-      );
     }
+    const firstName = decl.clientProfile?.firstName;
+    const lastName = decl.clientProfile?.lastName;
+    const taxablePerson = [firstName, lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    const taxYear =
+      (decl.questionnaireSnapshot as any)?.taxYear ??
+      (decl.questionnaireSnapshot as any)?.step1Answers?.taxYear;
+
+    // ✅ send email (do not crash request if it fails)
+    const clientEmail = decl.clientProfile?.user?.email;
+    if (clientEmail) {
+      void this.emailService
+        .sendDownloadConfirmed({
+          email: clientEmail,
+          declarationId,
+          firstName,
+          taxYear,
+          taxablePerson,
+        })
+        .catch((e) => console.log(e));
+    }
+
     return this.findDeclarationById(declarationId);
   }
   async saveDeclaration(
@@ -689,6 +713,26 @@ export class OrdersService {
         confirmedBy: userId,
       },
     );
+    const firstName = decl.clientProfile?.firstName;
+    const email = decl.clientProfile?.user?.email;
+    const taxYear =
+      (decl.questionnaireSnapshot as any)?.taxYear ??
+      (decl.questionnaireSnapshot as any)?.step1Answers?.taxYear;
+    const lastName = decl.clientProfile.lastName;
+    const taxablePerson = [firstName, lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    if (email) {
+      void this.emailService.sendStep1Confirmed({
+        email,
+        declarationId,
+        firstName,
+        taxYear,
+        taxablePerson,
+      });
+      // .catch((e) => this.logger.error(`Step1 email failed for ${email}`, e));
+    }
 
     return { ok: true };
   }

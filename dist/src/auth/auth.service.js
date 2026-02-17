@@ -93,15 +93,12 @@ let AuthService = class AuthService {
             postalCode,
             city,
         });
-        const verifyRaw = (0, token_utils_1.generateRandomHex)(32);
-        const prt = this.prtRepo.create({
-            user: user,
-            tokenHash: await bcrypt.hash(verifyRaw, 12),
-            expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
-        });
-        const savedPrt = await this.prtRepo.save(prt);
-        const composite = (0, token_utils_1.composeToken)(savedPrt.id, verifyRaw);
-        await this.emailService.sendEmailVerification(user.email, composite);
+        void this.emailService
+            .sendWelcomeEmail({
+            email: user.email,
+            firstName,
+        })
+            .catch((e) => console.log(e));
         return { id: user.id, email: user.email };
     }
     async validateUser(email, password) {
@@ -176,19 +173,6 @@ let AuthService = class AuthService {
         if (!user) {
             return true;
         }
-        const raw = (0, token_utils_1.generateRandomHex)(48);
-        const tokenHash = await bcrypt.hash(raw, 12);
-        const expiresAt = new Date(Date.now() + 1000 * 60 * 60);
-        const prt = this.prtRepo.create({
-            user,
-            tokenHash,
-            expiresAt,
-            ip,
-            userAgent,
-        });
-        const saved = await this.prtRepo.save(prt);
-        const composite = (0, token_utils_1.composeToken)(saved.id, raw);
-        await this.emailService.sendPasswordReset(user.email, composite);
         return true;
     }
     async consumePasswordReset(compositeToken, newPassword) {

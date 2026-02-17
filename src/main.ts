@@ -14,6 +14,7 @@ async function bootstrap() {
   const allowedOrigins = new Set<string>([
     'https://www.taxero.ch',
     'https://taxero.ch',
+    'http://localhost:3100',
     'http://localhost:5173',
     'https://localhost:5173',
     'https://wells-leo-designation-median.trycloudflare.com',

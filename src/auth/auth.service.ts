@@ -1,4 +1,5 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Injectable,
@@ -55,16 +56,16 @@ export class AuthService {
       city,
     } = registerDto;
 
-    // 1. التحقق من وجود البريد الإلكتروني
+    // 1️⃣ Check if email already exists
     const exists = await this.usersRepo.findOneByEmail(email);
     if (exists) {
       throw new BadRequestException('Email already used');
     }
 
-    // 2. تشفير كلمة المرور
+    // 2️⃣ Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // 3. إنشاء المستخدم وملفه الشخصي دفعة واحدة عبر UsersService
+    // 3️⃣ Create user
     const user = await this.usersRepo.createUser(email, passwordHash, {
       firstName,
       lastName,
@@ -73,18 +74,15 @@ export class AuthService {
       city,
     });
 
-    // 4. إرسال بريد التحقق (الكود الحالي لا يتغير)
-    const verifyRaw = generateRandomHex(32);
-    const prt = this.prtRepo.create({
-      user: user,
-      tokenHash: await bcrypt.hash(verifyRaw, 12),
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24), // 24h
-    });
-    const savedPrt = await this.prtRepo.save(prt);
-    const composite = composeToken(savedPrt.id, verifyRaw);
-    await this.emailService.sendEmailVerification(user.email, composite);
+    // 4️⃣ Send welcome email (non-blocking)
+    void this.emailService
+      .sendWelcomeEmail({
+        email: user.email,
+        firstName,
+      })
+      .catch((e) => console.log(e));
 
-    // 5. إرجاع استجابة ناجحة
+    // 5️⃣ Return success response
     return { id: user.id, email: user.email };
   }
   async validateUser(email: string, password: string) {
@@ -193,21 +191,21 @@ export class AuthService {
     if (!user) {
       return true;
     }
-    const raw = generateRandomHex(48);
-    const tokenHash = await bcrypt.hash(raw, 12);
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
+    // const raw = generateRandomHex(48);
+    // const tokenHash = await bcrypt.hash(raw, 12);
+    // const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
 
-    const prt = this.prtRepo.create({
-      user,
-      tokenHash,
-      expiresAt,
-      ip,
-      userAgent,
-    });
-    const saved = await this.prtRepo.save(prt);
+    // const prt = this.prtRepo.create({
+    //   user,
+    //   tokenHash,
+    //   expiresAt,
+    //   ip,
+    //   userAgent,
+    // });
+    // const saved = await this.prtRepo.save(prt);
 
-    const composite = composeToken(saved.id, raw);
-    await this.emailService.sendPasswordReset(user.email, composite);
+    // const composite = composeToken(saved.id, raw);
+    // await this.emailService.sendPasswordReset(user.email, composite);
     return true;
   }
 

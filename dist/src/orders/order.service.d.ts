@@ -6,13 +6,15 @@ import { PricingService } from 'src/pricing/pricing.service';
 import { Pricing } from 'src/pricing/pricing.entity';
 import { Step } from '../types/steps';
 import { StepStatus } from '../types/steps';
+import { EmailService } from 'src/email/email.service';
 export declare class OrdersService {
     declarationsRepository: Repository<TaxDeclaration>;
     private usersService;
     private pricingService;
     private pricingRepository;
     private dataSource;
-    constructor(declarationsRepository: Repository<TaxDeclaration>, usersService: UsersService, pricingService: PricingService, pricingRepository: Repository<Pricing>, dataSource: DataSource);
+    private readonly emailService;
+    constructor(declarationsRepository: Repository<TaxDeclaration>, usersService: UsersService, pricingService: PricingService, pricingRepository: Repository<Pricing>, dataSource: DataSource, emailService: EmailService);
     private isStaff;
     getDefaultSteps(): Step[];
     findDeclarationById(declarationId: string, relations?: string[]): Promise<TaxDeclaration>;

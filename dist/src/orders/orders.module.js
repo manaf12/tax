@@ -16,6 +16,7 @@ const pricing_module_1 = require("../pricing/pricing.module");
 const orders_controller_1 = require("./orders.controller");
 const pricing_entity_1 = require("../pricing/pricing.entity");
 const files_module_1 = require("../files/files.module");
+const email_module_1 = require("../email/email.module");
 let OrdersModule = class OrdersModule {
 };
 exports.OrdersModule = OrdersModule;
@@ -24,6 +25,7 @@ exports.OrdersModule = OrdersModule = __decorate([
         imports: [
             typeorm_1.TypeOrmModule.forFeature([tax_declaration_entity_1.TaxDeclaration, pricing_entity_1.Pricing]),
             user_module_1.UsersModule,
+            email_module_1.EmailModule,
             (0, common_1.forwardRef)(() => files_module_1.FilesModule),
             (0, common_1.forwardRef)(() => pricing_module_1.PricingModule),
         ],
