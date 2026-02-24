@@ -34,7 +34,7 @@ export declare class AuthService {
     }>;
     revokeRefreshToken(compositeToken: string): Promise<boolean>;
     revokeAllForUser(userId: string): Promise<void>;
-    createPasswordReset(email: string, ip?: string, userAgent?: string): Promise<boolean>;
-    consumePasswordReset(compositeToken: string, newPassword: string): Promise<boolean>;
+    createPasswordReset(email: string, ip?: string, userAgent?: string): Promise<void>;
+    consumePasswordReset(compositeToken: string, newPassword: string): Promise<void>;
     consumeEmailVerification(compositeToken: string): Promise<boolean>;
 }

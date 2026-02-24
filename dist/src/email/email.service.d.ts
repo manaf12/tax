@@ -44,5 +44,10 @@ export declare class EmailService {
         taxYear?: number | string;
         taxablePerson?: string;
     }): Promise<void>;
+    sendPasswordResetEmail(params: {
+        email: string;
+        firstName?: string;
+        tokenComposite: string;
+    }): Promise<void>;
     private escapeHtml;
 }

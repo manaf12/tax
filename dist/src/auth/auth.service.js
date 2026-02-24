@@ -170,33 +170,52 @@ let AuthService = class AuthService {
     }
     async createPasswordReset(email, ip, userAgent) {
         const user = await this.usersRepo.findOneByEmail(email);
-        if (!user) {
-            return true;
-        }
-        return true;
+        if (!user)
+            return;
+        const rawToken = (0, token_utils_1.generateRandomHex)(32);
+        const tokenHash = await bcrypt.hash(rawToken, 12);
+        const expiresAt = new Date(Date.now() + 1000 * 60 * 60);
+        const pr = this.prtRepo.create({
+            user,
+            tokenHash,
+            expiresAt,
+            ip,
+            userAgent,
+        });
+        const saved = await this.prtRepo.save(pr);
+        const composite = (0, token_utils_1.composeToken)(saved.id, rawToken);
+        const firstName = user.profile?.firstName ?? undefined;
+        void this.emailService
+            .sendPasswordResetEmail({
+            email: user.email,
+            firstName,
+            tokenComposite: composite,
+        })
+            .catch((e) => console.log(e));
     }
     async consumePasswordReset(compositeToken, newPassword) {
-        const parsed = (0, token_utils_1.parseCompositeToken)(compositeToken);
-        if (!parsed)
-            throw new common_1.BadRequestException('Invalid token format');
-        const prt = await this.prtRepo.findOne({
-            where: { id: parsed.id },
-            relations: ['user'],
-        });
-        if (!prt || prt.used || prt.expiresAt < new Date()) {
+        const [id, raw] = compositeToken.split('.');
+        if (!id || !raw) {
             throw new common_1.BadRequestException('Invalid or expired token');
         }
-        const ok = await bcrypt.compare(parsed.raw, prt.tokenHash);
-        if (!ok)
-            throw new common_1.BadRequestException('Invalid token');
-        prt.used = true;
-        await this.prtRepo.save(prt);
-        const hashed = await bcrypt.hash(newPassword, 12);
-        prt.user.passwordHash = hashed;
-        await this.usersRepo.saveUser(prt.user);
-        await this.revokeAllForUser(prt.user.id);
-        await this.prtRepo.update({ user: { id: prt.user.id }, used: false }, { used: true });
-        return true;
+        const pr = await this.prtRepo.findOne({
+            where: { id },
+            relations: ['user'],
+        });
+        if (!pr) {
+            throw new common_1.BadRequestException('Invalid or expired token');
+        }
+        if (pr.expiresAt < new Date()) {
+            await this.prtRepo.delete(pr.id);
+            throw new common_1.BadRequestException('Invalid or expired token');
+        }
+        const match = await bcrypt.compare(raw, pr.tokenHash);
+        if (!match) {
+            throw new common_1.BadRequestException('Invalid or expired token');
+        }
+        const newHash = await bcrypt.hash(newPassword, 12);
+        await this.usersRepo.updatePassword(pr.user.id, newHash);
+        await this.prtRepo.delete(pr.id);
     }
     async consumeEmailVerification(compositeToken) {
         const parsed = (0, token_utils_1.parseCompositeToken)(compositeToken);

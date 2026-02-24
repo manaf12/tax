@@ -15,6 +15,7 @@ export declare class PricingService {
         surcharges: Record<string, number | string>;
         finalPrice: number;
     };
+    private computePricesFromSnapshot;
     calculatePricing(userId: string, declarationId: string): Promise<Pricing>;
     acceptPricing(userId: string, pricingId: string): Promise<TaxDeclaration>;
     getPricingByDeclarationId(declarationId: string): Promise<Pricing | null>;

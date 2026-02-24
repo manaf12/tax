@@ -71,7 +71,9 @@ let AuthController = class AuthController {
         return { ok: true };
     }
     async forgot(dto, req) {
-        await this.authService.createPasswordReset(dto.email, req.ip, req.headers['user-agent']);
+        const userAgentHeader = req.headers['user-agent'];
+        const userAgent = typeof userAgentHeader === 'string' ? userAgentHeader : '';
+        await this.authService.createPasswordReset(dto.email, req.ip, userAgent);
         return { ok: true };
     }
     async reset(dto) {

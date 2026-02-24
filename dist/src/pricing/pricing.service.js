@@ -36,73 +36,66 @@ let PricingService = class PricingService {
         this.notificationsService = notificationsService;
     }
     calculatePrice(questionnaireData, offer) {
-        let variablePrice = 0;
-        const surcharges = {};
-        const BASE_FEE = 50;
-        variablePrice += BASE_FEE;
-        surcharges.baseFee = BASE_FEE;
-        if (questionnaireData.isMarried) {
-            const MARRIED_FEE = 30;
-            variablePrice += MARRIED_FEE;
-            surcharges.marriedFee = MARRIED_FEE;
+        const snapshot = {
+            maritalStatus: questionnaireData.isMarried ? 'married' : 'single',
+            childrenCount: questionnaireData.numKids ?? 0,
+            incomeSources: questionnaireData.numIncomeSources ?? 0,
+            wealthStatements: questionnaireData.numSecurities ?? 0,
+            properties: questionnaireData.numRealEstate ?? 0,
+            newProperties: questionnaireData.numFirstTimeDeclared ?? 0,
+        };
+        const { standard, premium, confort } = this.computePricesFromSnapshot(snapshot);
+        let offerPrice = standard;
+        switch (offer) {
+            case tax_declaration_entity_1.OfferType.PREMIUM:
+                offerPrice = premium;
+                break;
+            case tax_declaration_entity_1.OfferType.CONFORT:
+                offerPrice = confort;
+                break;
+            case tax_declaration_entity_1.OfferType.STANDARD:
+            default:
+                offerPrice = standard;
+                break;
         }
-        const numKids = questionnaireData.numKids || 0;
-        if (numKids > 0) {
-            const KIDS_FEE_PER_UNIT = 10;
-            const kidsFee = numKids * KIDS_FEE_PER_UNIT;
-            variablePrice += kidsFee;
-            surcharges.kidsFee = kidsFee;
-        }
-        const numIncomeSources = questionnaireData.numIncomeSources || 0;
-        if (numIncomeSources > 0) {
-            const INCOME_FEE_PER_UNIT = 10;
-            const incomeFee = numIncomeSources * INCOME_FEE_PER_UNIT;
-            variablePrice += incomeFee;
-            surcharges.incomeFee = incomeFee;
-        }
-        const numSecurities = questionnaireData.numSecurities || 0;
-        if (numSecurities > 0) {
-            const SECURITIES_FEE_PER_UNIT = 10;
-            const securitiesFee = numSecurities * SECURITIES_FEE_PER_UNIT;
-            variablePrice += securitiesFee;
-            surcharges.securitiesFee = securitiesFee;
-        }
-        const numRealEstate = questionnaireData.numRealEstate || 0;
-        if (numRealEstate > 0) {
-            const REAL_ESTATE_FEE_PER_UNIT = 80;
-            const realEstateFee = numRealEstate * REAL_ESTATE_FEE_PER_UNIT;
-            variablePrice += realEstateFee;
-            surcharges.realEstateFee = realEstateFee;
-            const numFirstTimeDeclared = questionnaireData.firstTimeDeclaredCount || 0;
-            if (numFirstTimeDeclared > 0) {
-                const FIRST_TIME_FEE_PER_UNIT = 60;
-                const firstTimeFee = numFirstTimeDeclared * FIRST_TIME_FEE_PER_UNIT;
-                variablePrice += firstTimeFee;
-                surcharges.firstTimeFee = firstTimeFee;
-            }
-        }
+        const surcharges = {
+            standardPrice: standard,
+            premiumPrice: premium,
+            confortPrice: confort,
+            appliedPriceSource: 'SnapshotPricing',
+            offerType: offer,
+        };
+        return {
+            basePrice: offerPrice,
+            surcharges,
+            finalPrice: offerPrice,
+        };
+    }
+    computePricesFromSnapshot(snapshot) {
+        const normalized = {
+            isMarried: snapshot.maritalStatus === 'married',
+            numKids: Number(snapshot.childrenCount ?? 0),
+            numIncomeSources: Number(snapshot.incomeSources ?? 0),
+            numSecurities: Number(snapshot.wealthStatements ?? 0),
+            numRealEstate: Number(snapshot.properties ?? 0),
+            firstTimeDeclaredCount: Number(snapshot.newProperties ?? 0),
+        };
+        let variablePrice = 50;
+        if (normalized.isMarried)
+            variablePrice += 30;
+        variablePrice += normalized.numKids * 10;
+        variablePrice += normalized.numIncomeSources * 10;
+        variablePrice += normalized.numSecurities * 10;
+        variablePrice += normalized.numRealEstate * 80;
+        variablePrice += normalized.firstTimeDeclaredCount * 60;
         const standardPrice = variablePrice - 1;
         const premiumPrice = standardPrice + 120 - 1;
         const confortPrice = premiumPrice * 2 - 1;
-        let finalPrice = 0;
-        switch (offer) {
-            case tax_declaration_entity_1.OfferType.STANDARD:
-                finalPrice = standardPrice;
-                break;
-            case tax_declaration_entity_1.OfferType.PREMIUM:
-                finalPrice = premiumPrice;
-                break;
-            case tax_declaration_entity_1.OfferType.CONFORT:
-                finalPrice = confortPrice;
-                break;
-        }
-        surcharges.standardPrice = standardPrice;
-        surcharges.premiumPrice = premiumPrice;
-        surcharges.confortPrice = confortPrice;
-        surcharges.variablePrice = variablePrice;
-        surcharges.appliedPriceSource = 'Variable';
-        surcharges.offerType = offer;
-        return { basePrice: variablePrice, surcharges, finalPrice };
+        return {
+            standard: standardPrice,
+            premium: premiumPrice,
+            confort: confortPrice,
+        };
     }
     async calculatePricing(userId, declarationId) {
         const declaration = await this.orderService.findOne(declarationId);
@@ -232,30 +225,7 @@ let PricingService = class PricingService {
         if (!response)
             throw new common_1.NotFoundException('Questionnaire not found.');
         const snapshot = response.data || {};
-        const normalized = {
-            isMarried: snapshot.maritalStatus === 'married',
-            numKids: Number(snapshot.childrenCount ?? 0),
-            numIncomeSources: Number(snapshot.incomeSources ?? 0),
-            numSecurities: Number(snapshot.wealthStatements ?? 0),
-            numRealEstate: Number(snapshot.properties ?? 0),
-            firstTimeDeclaredCount: Number(snapshot.newProperties ?? 0),
-        };
-        let variablePrice = 50;
-        if (normalized.isMarried)
-            variablePrice += 30;
-        variablePrice += normalized.numKids * 10;
-        variablePrice += normalized.numIncomeSources * 10;
-        variablePrice += normalized.numSecurities * 10;
-        variablePrice += normalized.numRealEstate * 80;
-        variablePrice += normalized.firstTimeDeclaredCount * 60;
-        const standardPrice = variablePrice - 1;
-        const premiumPrice = standardPrice + 120 - 1;
-        const confortPrice = premiumPrice * 2 - 1;
-        return {
-            standard: standardPrice,
-            premium: premiumPrice,
-            confort: confortPrice,
-        };
+        return this.computePricesFromSnapshot(snapshot);
     }
 };
 exports.PricingService = PricingService;

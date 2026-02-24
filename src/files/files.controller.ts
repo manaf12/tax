@@ -45,7 +45,7 @@ export class FilesController {
         cb(null, true);
       },
       limits: {
-        fileSize: 1 * 1024 * 1024,
+        fileSize: 10 * 1024 * 1024,
       },
     }),
   )

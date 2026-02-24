@@ -1,5 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import {
   Injectable,
   ForbiddenException,
@@ -47,84 +49,83 @@ export class PricingService {
     surcharges: Record<string, number | string>;
     finalPrice: number;
   } {
-    let variablePrice = 0;
-    const surcharges: Record<string, number | string> = {};
+    // Map normalized questionnaireData back into a "snapshot" shape
+    // that computePricesFromSnapshot expects.
+    const snapshot = {
+      maritalStatus: questionnaireData.isMarried ? 'married' : 'single',
+      childrenCount: questionnaireData.numKids ?? 0,
+      incomeSources: questionnaireData.numIncomeSources ?? 0,
+      wealthStatements: questionnaireData.numSecurities ?? 0,
+      properties: questionnaireData.numRealEstate ?? 0,
+      newProperties: questionnaireData.numFirstTimeDeclared ?? 0,
+    };
 
-    const BASE_FEE = 50;
-    variablePrice += BASE_FEE;
-    surcharges.baseFee = BASE_FEE;
+    // Use the new unified pricing logic
+    const { standard, premium, confort } =
+      this.computePricesFromSnapshot(snapshot);
 
-    if (questionnaireData.isMarried) {
-      const MARRIED_FEE = 30;
-      variablePrice += MARRIED_FEE;
-      surcharges.marriedFee = MARRIED_FEE;
+    // Pick the correct price for the selected offer
+    let offerPrice = standard;
+    switch (offer) {
+      case OfferType.PREMIUM:
+        offerPrice = premium;
+        break;
+      case OfferType.CONFORT:
+        offerPrice = confort;
+        break;
+      case OfferType.STANDARD:
+      default:
+        offerPrice = standard;
+        break;
     }
 
-    const numKids = questionnaireData.numKids || 0;
-    if (numKids > 0) {
-      const KIDS_FEE_PER_UNIT = 10;
-      const kidsFee = numKids * KIDS_FEE_PER_UNIT;
-      variablePrice += kidsFee;
-      surcharges.kidsFee = kidsFee;
-    }
+    // Minimal debug / audit info.
+    const surcharges: Record<string, number | string> = {
+      standardPrice: standard,
+      premiumPrice: premium,
+      confortPrice: confort,
+      appliedPriceSource: 'SnapshotPricing',
+      offerType: offer,
+    };
 
-    const numIncomeSources = questionnaireData.numIncomeSources || 0;
-    if (numIncomeSources > 0) {
-      const INCOME_FEE_PER_UNIT = 10;
-      const incomeFee = numIncomeSources * INCOME_FEE_PER_UNIT;
-      variablePrice += incomeFee;
-      surcharges.incomeFee = incomeFee;
-    }
+    // We now treat basePrice = final price for that offer
+    return {
+      basePrice: offerPrice,
+      surcharges,
+      finalPrice: offerPrice,
+    };
+  }
+  private computePricesFromSnapshot(snapshot: any): {
+    standard: number;
+    premium: number;
+    confort: number;
+  } {
+    const normalized = {
+      isMarried: snapshot.maritalStatus === 'married',
+      numKids: Number(snapshot.childrenCount ?? 0),
+      numIncomeSources: Number(snapshot.incomeSources ?? 0),
+      numSecurities: Number(snapshot.wealthStatements ?? 0),
+      numRealEstate: Number(snapshot.properties ?? 0),
+      firstTimeDeclaredCount: Number(snapshot.newProperties ?? 0),
+    };
 
-    const numSecurities = questionnaireData.numSecurities || 0;
-    if (numSecurities > 0) {
-      const SECURITIES_FEE_PER_UNIT = 10;
-      const securitiesFee = numSecurities * SECURITIES_FEE_PER_UNIT;
-      variablePrice += securitiesFee;
-      surcharges.securitiesFee = securitiesFee;
-    }
+    let variablePrice = 50;
+    if (normalized.isMarried) variablePrice += 30;
+    variablePrice += normalized.numKids * 10;
+    variablePrice += normalized.numIncomeSources * 10;
+    variablePrice += normalized.numSecurities * 10;
+    variablePrice += normalized.numRealEstate * 80;
+    variablePrice += normalized.firstTimeDeclaredCount * 60;
 
-    const numRealEstate = questionnaireData.numRealEstate || 0;
-    if (numRealEstate > 0) {
-      const REAL_ESTATE_FEE_PER_UNIT = 80;
-      const realEstateFee = numRealEstate * REAL_ESTATE_FEE_PER_UNIT;
-      variablePrice += realEstateFee;
-      surcharges.realEstateFee = realEstateFee;
-
-      const numFirstTimeDeclared =
-        questionnaireData.firstTimeDeclaredCount || 0;
-      if (numFirstTimeDeclared > 0) {
-        const FIRST_TIME_FEE_PER_UNIT = 60;
-        const firstTimeFee = numFirstTimeDeclared * FIRST_TIME_FEE_PER_UNIT;
-        variablePrice += firstTimeFee;
-        surcharges.firstTimeFee = firstTimeFee;
-      }
-    }
     const standardPrice = variablePrice - 1;
     const premiumPrice = standardPrice + 120 - 1;
     const confortPrice = premiumPrice * 2 - 1;
 
-    let finalPrice = 0;
-    switch (offer) {
-      case OfferType.STANDARD:
-        finalPrice = standardPrice;
-        break;
-      case OfferType.PREMIUM:
-        finalPrice = premiumPrice;
-        break;
-      case OfferType.CONFORT:
-        finalPrice = confortPrice;
-        break;
-    }
-
-    surcharges.standardPrice = standardPrice;
-    surcharges.premiumPrice = premiumPrice;
-    surcharges.confortPrice = confortPrice;
-    surcharges.variablePrice = variablePrice;
-    surcharges.appliedPriceSource = 'Variable';
-    surcharges.offerType = offer;
-
-    return { basePrice: variablePrice, surcharges, finalPrice };
+    return {
+      standard: standardPrice,
+      premium: premiumPrice,
+      confort: confortPrice,
+    };
   }
   /**
    * @param userId
@@ -329,28 +330,6 @@ export class PricingService {
     if (!response) throw new NotFoundException('Questionnaire not found.');
 
     const snapshot = response.data || {};
-    const normalized = {
-      isMarried: snapshot.maritalStatus === 'married',
-      numKids: Number(snapshot.childrenCount ?? 0),
-      numIncomeSources: Number(snapshot.incomeSources ?? 0),
-      numSecurities: Number(snapshot.wealthStatements ?? 0),
-      numRealEstate: Number(snapshot.properties ?? 0),
-      firstTimeDeclaredCount: Number(snapshot.newProperties ?? 0),
-    };
-    let variablePrice = 50;
-    if (normalized.isMarried) variablePrice += 30;
-    variablePrice += normalized.numKids * 10;
-    variablePrice += normalized.numIncomeSources * 10;
-    variablePrice += normalized.numSecurities * 10;
-    variablePrice += normalized.numRealEstate * 80;
-    variablePrice += normalized.firstTimeDeclaredCount * 60;
-    const standardPrice = variablePrice - 1;
-    const premiumPrice = standardPrice + 120 - 1;
-    const confortPrice = premiumPrice * 2 - 1;
-    return {
-      standard: standardPrice,
-      premium: premiumPrice,
-      confort: confortPrice,
-    };
+    return this.computePricesFromSnapshot(snapshot);
   }
 }

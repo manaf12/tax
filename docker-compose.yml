@@ -58,7 +58,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@db:5432/${POSTGRES_DB:-swisstax}
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
-
+      FRONTEND_URL: https://taxero.ch
     ports:
       - "3000:3000"
     depends_on:

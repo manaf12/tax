@@ -226,7 +226,7 @@ export class AuthService {
   ): Promise<void> {
     // 🔹 Inverse of composeToken(savedPrt.id, rawToken)
     // If composeToken uses a different separator, change ':' to match.
-    const [id, raw] = compositeToken.split(':');
+    const [id, raw] = compositeToken.split('.');
     if (!id || !raw) {
       throw new BadRequestException('Invalid or expired token');
     }

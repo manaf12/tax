@@ -158,6 +158,8 @@ let QuestionnaireService = class QuestionnaireService {
                 numSecurities: Number(savedResponse.data.wealthStatements ?? 0),
                 numRealEstate: Number(savedResponse.data.properties ?? 0),
                 firstTimeDeclaredCount: Number(savedResponse.data.newProperties ?? 0),
+                movedAddress: Boolean(savedResponse.data.movedAddress),
+                numPropertiesEffectiveCost: Number(savedResponse.data.propertiesWithEffectiveCost ?? 0),
             };
             const priceDetails = this.pricingService.calculatePrice(normalized, offerValue);
             let pricingRecord = await this.pricingRepository.findOne({
