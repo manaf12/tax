@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Injectable,
@@ -186,66 +184,83 @@ export class AuthService {
   // -----------------------
   // Password reset flow
   // -----------------------
+  // inside AuthService
+
   async createPasswordReset(email: string, ip?: string, userAgent?: string) {
     const user = await this.usersRepo.findOneByEmail(email);
-    if (!user) {
-      return true;
-    }
-    // const raw = generateRandomHex(48);
-    // const tokenHash = await bcrypt.hash(raw, 12);
-    // const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
 
-    // const prt = this.prtRepo.create({
-    //   user,
-    //   tokenHash,
-    //   expiresAt,
-    //   ip,
-    //   userAgent,
-    // });
-    // const saved = await this.prtRepo.save(prt);
+    // Avoid enumeration
+    if (!user) return;
 
-    // const composite = composeToken(saved.id, raw);
-    // await this.emailService.sendPasswordReset(user.email, composite);
-    return true;
-  }
+    const rawToken = generateRandomHex(32);
+    const tokenHash = await bcrypt.hash(rawToken, 12);
 
-  async consumePasswordReset(compositeToken: string, newPassword: string) {
-    const parsed = parseCompositeToken(compositeToken);
-    if (!parsed) throw new BadRequestException('Invalid token format');
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1h
 
-    const prt = await this.prtRepo.findOne({
-      where: { id: parsed.id },
-      relations: ['user'],
+    // create password-reset token
+    const pr = this.prtRepo.create({
+      user,
+      tokenHash,
+      expiresAt,
+      ip,
+      userAgent,
     });
-    if (!prt || prt.used || prt.expiresAt < new Date()) {
+
+    const saved = await this.prtRepo.save(pr);
+
+    const composite = composeToken(saved.id, rawToken);
+
+    const firstName = user.profile?.firstName ?? undefined;
+
+    void this.emailService
+      .sendPasswordResetEmail({
+        email: user.email,
+        firstName,
+        tokenComposite: composite,
+      })
+      .catch((e) => console.log(e));
+  }
+  async consumePasswordReset(
+    compositeToken: string,
+    newPassword: string,
+  ): Promise<void> {
+    // 🔹 Inverse of composeToken(savedPrt.id, rawToken)
+    // If composeToken uses a different separator, change ':' to match.
+    const [id, raw] = compositeToken.split(':');
+    if (!id || !raw) {
       throw new BadRequestException('Invalid or expired token');
     }
 
-    const ok = await bcrypt.compare(parsed.raw, prt.tokenHash);
-    if (!ok) throw new BadRequestException('Invalid token');
+    const pr = await this.prtRepo.findOne({
+      where: { id },
+      relations: ['user'],
+    });
 
-    // mark used
-    prt.used = true;
-    await this.prtRepo.save(prt);
+    if (!pr) {
+      throw new BadRequestException('Invalid or expired token');
+    }
 
-    // update password
-    const hashed = await bcrypt.hash(newPassword, 12);
-    prt.user.passwordHash = hashed;
-    await this.usersRepo.saveUser(prt.user);
+    if (pr.expiresAt < new Date()) {
+      await this.prtRepo.delete(pr.id);
+      throw new BadRequestException('Invalid or expired token');
+    }
 
-    // revoke all refresh tokens
-    await this.revokeAllForUser(prt.user.id);
+    const match = await bcrypt.compare(raw, pr.tokenHash);
+    if (!match) {
+      throw new BadRequestException('Invalid or expired token');
+    }
 
-    // mark other reset tokens used
-    await this.prtRepo.update(
-      { user: { id: prt.user.id } as any, used: false },
-      { used: true },
-    );
+    // 🔹 Hash new password
+    const newHash = await bcrypt.hash(newPassword, 12);
 
-    return true;
-  }
+    // 🔹 Use UsersService to update the password (this method already exists)
+    await this.usersRepo.updatePassword(pr.user.id, newHash);
 
-  // -----------------------
+    // 🔹 Delete the reset token so it cannot be reused
+    await this.prtRepo.delete(pr.id);
+
+    // (Optional) revoke all refresh tokens/sessions for this user if you have that logic
+  } // -----------------------
   // Email verification consume (reuse PRT table for verification tokens)
   // -----------------------
   async consumeEmailVerification(compositeToken: string) {

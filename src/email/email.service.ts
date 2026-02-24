@@ -293,7 +293,48 @@ export class EmailService {
 
     await this.sendMail(email, subject, html);
   }
+  async sendPasswordResetEmail(params: {
+    email: string;
+    firstName?: string;
+    tokenComposite: string;
+  }) {
+    const { email, firstName, tokenComposite } = params;
 
+    const resetUrl = `${process.env.APP_URL}/auth/reset-password?token=${encodeURIComponent(
+      tokenComposite,
+    )}`;
+
+    const subject = 'Réinitialisation de votre mot de passe';
+
+    const html = `
+    <p>Bonjour${firstName ? ` ${this.escapeHtml(firstName)}` : ''},</p>
+
+    <p>
+      Vous avez demandé la réinitialisation de votre mot de passe Taxero.ch.
+      Pour choisir un nouveau mot de passe, veuillez cliquer sur le lien ci-dessous :
+    </p>
+
+    <p>
+      Réinitialiser mon mot de passe :<br/>
+      <a href="${resetUrl}">${resetUrl}</a>
+    </p>
+
+    <p>
+      Ce lien est valable pendant 1 heure. Passé ce délai, il faudra refaire une demande de réinitialisation.
+    </p>
+
+    <p>
+      Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer ce message.
+    </p>
+
+    <p>
+      Cordialement,<br/>
+      L’équipe Taxero.ch
+    </p>
+  `;
+
+    await this.sendMail(email, subject, html);
+  }
   private escapeHtml(input: string) {
     return input
       .replaceAll('&', '&amp;')

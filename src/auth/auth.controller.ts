@@ -106,11 +106,12 @@ export class AuthController {
 
   @Post('forgot-password')
   async forgot(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
-    await this.authService.createPasswordReset(
-      dto.email,
-      req.ip,
-      req.headers['user-agent'] as string,
-    );
+    const userAgentHeader = req.headers['user-agent'];
+    const userAgent =
+      typeof userAgentHeader === 'string' ? userAgentHeader : '';
+
+    await this.authService.createPasswordReset(dto.email, req.ip, userAgent);
+
     // Always return same generic result to avoid enumeration
     return { ok: true };
   }
