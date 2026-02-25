@@ -55,4 +55,7 @@ export declare class OrdersService {
     confirmStep1(declarationId: string, userId: string): Promise<{
         ok: boolean;
     }>;
+    deleteDeclarationAsAdmin(declarationId: string, adminUser: User): Promise<{
+        id: string;
+    }>;
 }

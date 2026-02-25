@@ -420,7 +420,8 @@ let OrdersService = class OrdersService {
         qb.leftJoinAndSelect('d.clientProfile', 'cp')
             .leftJoinAndSelect('cp.user', 'u')
             .leftJoinAndSelect('d.pricing', 'p')
-            .leftJoinAndSelect('d.files', 'f');
+            .leftJoinAndSelect('d.files', 'f')
+            .leftJoinAndSelect('d.assignedAdmin', 'aa');
         if (query.status)
             qb.andWhere('d.status = :status', { status: query.status });
         if (query.currentStep)
@@ -521,6 +522,26 @@ let OrdersService = class OrdersService {
             });
         }
         return { ok: true };
+    }
+    async deleteDeclarationAsAdmin(declarationId, adminUser) {
+        const declaration = await this.declarationsRepository.findOne({
+            where: { id: declarationId },
+        });
+        if (!declaration) {
+            throw new common_1.NotFoundException('Declaration not found');
+        }
+        const roles = adminUser.roles ?? [];
+        const isSuperAdmin = roles.includes(user_entity_1.UserRole.SUPER_ADMIN);
+        const isAdmin = roles.includes(user_entity_1.UserRole.ADMIN);
+        const isAssignedToAdmin = declaration.assignedAdminId === adminUser.id;
+        if (!isSuperAdmin && !isAdmin) {
+            throw new common_1.ForbiddenException('User is not an admin or super admin.');
+        }
+        if (!isSuperAdmin && !isAssignedToAdmin) {
+            throw new common_1.ForbiddenException('You are not allowed to delete this declaration.');
+        }
+        await this.declarationsRepository.remove(declaration);
+        return { id: declarationId };
     }
 };
 exports.OrdersService = OrdersService;

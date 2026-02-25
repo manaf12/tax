@@ -30,4 +30,7 @@ export declare class AdminService {
         page: number;
         perPage: number;
     }>;
+    deleteDeclaration(declarationId: string, adminId: string): Promise<{
+        id: string;
+    }>;
 }

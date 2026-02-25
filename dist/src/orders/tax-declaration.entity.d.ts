@@ -3,6 +3,7 @@ import { File } from '../files/file.entity';
 import { Pricing } from '../pricing/pricing.entity';
 import { Payment } from 'src/payment/payment.entity';
 import { Step } from '../types/steps';
+import { User } from 'src/users/user.entity';
 export declare enum DeclarationStatus {
     DRAFT = "DRAFT",
     PENDING_PRICING = "PENDING_PRICING",
@@ -31,7 +32,8 @@ export declare class TaxDeclaration {
     files: File[];
     createdAt: Date;
     updatedAt: Date;
-    assignedAdminId?: string;
+    assignedAdminId?: string | null;
+    assignedAdmin?: User | null;
     assignedAt?: Date;
     assignedById?: string;
     assignmentHistory?: Array<{

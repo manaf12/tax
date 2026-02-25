@@ -119,6 +119,10 @@ let AdminController = class AdminController {
     async listAdmins() {
         return this.usersService.listAdmins();
     }
+    async deleteDeclaration(id, user) {
+        await this.adminService.deleteDeclaration(id, user.sub);
+        return { ok: true, id };
+    }
 };
 exports.AdminController = AdminController;
 __decorate([
@@ -217,6 +221,14 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "listAdmins", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, user_decorator_1.User)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "deleteDeclaration", null);
 exports.AdminController = AdminController = __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, admin_guard_1.AdminGuard),
     (0, common_1.Controller)('admin/declarations'),

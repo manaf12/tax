@@ -43,4 +43,8 @@ export declare class AdminController {
         email: string;
         roles: UserRole[];
     }[]>;
+    deleteDeclaration(id: string, user: any): Promise<{
+        ok: boolean;
+        id: string;
+    }>;
 }

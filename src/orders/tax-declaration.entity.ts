@@ -8,13 +8,14 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  JoinColumn,
 } from 'typeorm';
 import { ClientProfile } from '../users/client-profile.entity';
 import { File } from '../files/file.entity';
 import { Pricing } from '../pricing/pricing.entity';
 import { Payment } from 'src/payment/payment.entity';
 import { Step } from '../types/steps';
-
+import { User } from 'src/users/user.entity';
 export enum DeclarationStatus {
   DRAFT = 'DRAFT',
   PENDING_PRICING = 'PENDING_PRICING',
@@ -77,9 +78,12 @@ export class TaxDeclaration {
 
   @UpdateDateColumn()
   updatedAt: Date;
-
+  @Index()
   @Column({ type: 'uuid', nullable: true })
-  assignedAdminId?: string;
+  assignedAdminId?: string | null;
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'assignedAdminId' }) // 👈 important
+  assignedAdmin?: User | null;
 
   @Column({ type: 'timestamp with time zone', nullable: true })
   assignedAt?: Date;

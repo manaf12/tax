@@ -592,17 +592,22 @@ export class OrdersService {
     const perPage = Math.min(query.perPage ?? 20, 100);
 
     const qb = this.declarationsRepository.createQueryBuilder('d');
+
     qb.leftJoinAndSelect('d.clientProfile', 'cp')
-      .leftJoinAndSelect('cp.user', 'u')
+      .leftJoinAndSelect('cp.user', 'u') // client user
       .leftJoinAndSelect('d.pricing', 'p')
-      .leftJoinAndSelect('d.files', 'f');
+      .leftJoinAndSelect('d.files', 'f')
+      .leftJoinAndSelect('d.assignedAdmin', 'aa'); // 👈 NEW: admin user
 
     if (query.status)
       qb.andWhere('d.status = :status', { status: query.status });
+
     if (query.currentStep)
       qb.andWhere('d.currentStep = :cs', { cs: query.currentStep });
+
     if (query.assignedAdminId)
       qb.andWhere('d.assignedAdminId = :aid', { aid: query.assignedAdminId });
+
     if (query.search) {
       qb.andWhere(
         '(u.email ILIKE :q OR u.fullName ILIKE :q OR d.id ILIKE :q)',
@@ -735,5 +740,32 @@ export class OrdersService {
     }
 
     return { ok: true };
+  }
+  async deleteDeclarationAsAdmin(declarationId: string, adminUser: User) {
+    const declaration = await this.declarationsRepository.findOne({
+      where: { id: declarationId },
+    });
+
+    if (!declaration) {
+      throw new NotFoundException('Declaration not found');
+    }
+
+    const roles = adminUser.roles ?? [];
+    const isSuperAdmin = roles.includes(UserRole.SUPER_ADMIN);
+    const isAdmin = roles.includes(UserRole.ADMIN);
+    const isAssignedToAdmin = declaration.assignedAdminId === adminUser.id;
+
+    if (!isSuperAdmin && !isAdmin) {
+      throw new ForbiddenException('User is not an admin or super admin.');
+    }
+
+    if (!isSuperAdmin && !isAssignedToAdmin) {
+      throw new ForbiddenException(
+        'You are not allowed to delete this declaration.',
+      );
+    }
+
+    await this.declarationsRepository.remove(declaration);
+    return { id: declarationId };
   }
 }

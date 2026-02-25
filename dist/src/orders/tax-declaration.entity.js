@@ -15,6 +15,7 @@ const client_profile_entity_1 = require("../users/client-profile.entity");
 const file_entity_1 = require("../files/file.entity");
 const pricing_entity_1 = require("../pricing/pricing.entity");
 const payment_entity_1 = require("../payment/payment.entity");
+const user_entity_1 = require("../users/user.entity");
 var DeclarationStatus;
 (function (DeclarationStatus) {
     DeclarationStatus["DRAFT"] = "DRAFT";
@@ -46,6 +47,7 @@ let TaxDeclaration = class TaxDeclaration {
     createdAt;
     updatedAt;
     assignedAdminId;
+    assignedAdmin;
     assignedAt;
     assignedById;
     assignmentHistory;
@@ -108,9 +110,15 @@ __decorate([
     __metadata("design:type", Date)
 ], TaxDeclaration.prototype, "updatedAt", void 0);
 __decorate([
+    (0, typeorm_1.Index)(),
     (0, typeorm_1.Column)({ type: 'uuid', nullable: true }),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], TaxDeclaration.prototype, "assignedAdminId", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => user_entity_1.User, { nullable: true }),
+    (0, typeorm_1.JoinColumn)({ name: 'assignedAdminId' }),
+    __metadata("design:type", Object)
+], TaxDeclaration.prototype, "assignedAdmin", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'timestamp with time zone', nullable: true }),
     __metadata("design:type", Date)

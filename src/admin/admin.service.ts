@@ -247,17 +247,22 @@ export class AdminService {
     const perPage = Math.min(query.perPage ?? 20, 100);
 
     const qb = this.taxDeclarationRepository.createQueryBuilder('d');
+
     qb.leftJoinAndSelect('d.clientProfile', 'cp')
-      .leftJoinAndSelect('cp.user', 'u')
+      .leftJoinAndSelect('cp.user', 'u') // client user
       .leftJoinAndSelect('d.pricing', 'p')
-      .leftJoinAndSelect('d.files', 'f');
+      .leftJoinAndSelect('d.files', 'f')
+      .leftJoinAndSelect('d.assignedAdmin', 'aa'); // 👈 NEW: admin user
 
     if (query.status)
       qb.andWhere('d.status = :status', { status: query.status });
+
     if (query.currentStep)
       qb.andWhere('d.currentStep = :cs', { cs: query.currentStep });
+
     if (query.assignedAdminId)
       qb.andWhere('d.assignedAdminId = :aid', { aid: query.assignedAdminId });
+
     if (query.search) {
       qb.andWhere(
         '(u.email ILIKE :q OR u.fullName ILIKE :q OR d.id ILIKE :q)',
@@ -271,5 +276,28 @@ export class AdminService {
 
     const [items, total] = await qb.getManyAndCount();
     return { items, total, page, perPage };
+  }
+  async deleteDeclaration(declarationId: string, adminId: string) {
+    // 1) Load the admin user
+    const adminUser = await this.usersService.findOneById(adminId);
+    if (!adminUser) {
+      throw new NotFoundException('Admin user not found.');
+    }
+
+    const roles = adminUser.roles ?? [];
+    const isStaff =
+      roles.includes(UserRole.ADMIN) || roles.includes(UserRole.SUPER_ADMIN);
+
+    if (!isStaff) {
+      throw new ForbiddenException('User is not an admin or super admin.');
+    }
+
+    // 2) Delegate to OrdersService for the actual delete + per-declaration checks
+    const result = await this.ordersService.deleteDeclarationAsAdmin(
+      declarationId,
+      adminUser,
+    );
+
+    return result; // { id: declarationId }
   }
 }

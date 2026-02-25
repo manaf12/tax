@@ -155,7 +155,8 @@ let AdminService = class AdminService {
         qb.leftJoinAndSelect('d.clientProfile', 'cp')
             .leftJoinAndSelect('cp.user', 'u')
             .leftJoinAndSelect('d.pricing', 'p')
-            .leftJoinAndSelect('d.files', 'f');
+            .leftJoinAndSelect('d.files', 'f')
+            .leftJoinAndSelect('d.assignedAdmin', 'aa');
         if (query.status)
             qb.andWhere('d.status = :status', { status: query.status });
         if (query.currentStep)
@@ -170,6 +171,19 @@ let AdminService = class AdminService {
             .take(perPage);
         const [items, total] = await qb.getManyAndCount();
         return { items, total, page, perPage };
+    }
+    async deleteDeclaration(declarationId, adminId) {
+        const adminUser = await this.usersService.findOneById(adminId);
+        if (!adminUser) {
+            throw new common_1.NotFoundException('Admin user not found.');
+        }
+        const roles = adminUser.roles ?? [];
+        const isStaff = roles.includes(user_entity_1.UserRole.ADMIN) || roles.includes(user_entity_1.UserRole.SUPER_ADMIN);
+        if (!isStaff) {
+            throw new common_1.ForbiddenException('User is not an admin or super admin.');
+        }
+        const result = await this.ordersService.deleteDeclarationAsAdmin(declarationId, adminUser);
+        return result;
     }
 };
 exports.AdminService = AdminService;

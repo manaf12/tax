@@ -7,6 +7,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -164,5 +165,16 @@ export class AdminController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   async listAdmins() {
     return this.usersService.listAdmins();
+  }
+  @Delete(':id')
+  async deleteDeclaration(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @User() user: any,
+  ) {
+    // user.sub = current admin’s id (from JWT)
+    await this.adminService.deleteDeclaration(id, user.sub);
+
+    // simple response; frontend just checks ok === true
+    return { ok: true, id };
   }
 }
