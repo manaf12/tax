@@ -10,7 +10,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, Brackets } from 'typeorm';
 import { TaxDeclaration, DeclarationStatus } from './tax-declaration.entity';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/user.entity'; // يجب استيراد كيان المستخدم
@@ -594,10 +594,10 @@ export class OrdersService {
     const qb = this.declarationsRepository.createQueryBuilder('d');
 
     qb.leftJoinAndSelect('d.clientProfile', 'cp')
-      .leftJoinAndSelect('cp.user', 'u') // client user
+      .leftJoinAndSelect('cp.user', 'u')
       .leftJoinAndSelect('d.pricing', 'p')
       .leftJoinAndSelect('d.files', 'f')
-      .leftJoinAndSelect('d.assignedAdmin', 'aa'); // 👈 NEW: admin user
+      .leftJoinAndSelect('d.assignedAdmin', 'aa');
 
     if (query.status)
       qb.andWhere('d.status = :status', { status: query.status });
@@ -609,9 +609,19 @@ export class OrdersService {
       qb.andWhere('d.assignedAdminId = :aid', { aid: query.assignedAdminId });
 
     if (query.search) {
+      const q = `%${query.search}%`;
       qb.andWhere(
-        '(u.email ILIKE :q OR u.fullName ILIKE :q OR d.id ILIKE :q)',
-        { q: `%${query.search}%` },
+        new Brackets((sqb) => {
+          sqb
+            .where('(cp IS NOT NULL AND u IS NOT NULL AND u.email ILIKE :q)', {
+              q,
+            })
+            .orWhere(
+              '(cp IS NOT NULL AND u IS NOT NULL AND u.fullName ILIKE :q)',
+              { q },
+            )
+            .orWhere('CAST(d.id AS TEXT) ILIKE :q', { q });
+        }),
       );
     }
 
@@ -622,7 +632,6 @@ export class OrdersService {
     const [items, total] = await qb.getManyAndCount();
     return { items, total, page, perPage };
   }
-
   async assignDeclarationsToAdmin(
     declarationIds: string[],
     adminId: string,
