@@ -589,12 +589,13 @@ export class OrdersService {
     search?: string;
   }) {
     const page = query.page ?? 1;
-    const perPage = Math.min(query.perPage ?? 20, 100);
+    const perPage = Math.min(query.perPage ?? 1000, 5000);
 
     const qb = this.declarationsRepository.createQueryBuilder('d');
 
     qb.leftJoinAndSelect('d.clientProfile', 'cp')
-      .leftJoinAndSelect('cp.user', 'u')
+      .leftJoin('cp.user', 'u') // ← بدون Select
+      .addSelect(['u.id', 'u.email', 'u.fullName']) // ← بس اللي محتاجه
       .leftJoinAndSelect('d.pricing', 'p')
       .leftJoinAndSelect('d.files', 'f')
       .leftJoinAndSelect('d.assignedAdmin', 'aa');
@@ -613,13 +614,8 @@ export class OrdersService {
       qb.andWhere(
         new Brackets((sqb) => {
           sqb
-            .where('(cp IS NOT NULL AND u IS NOT NULL AND u.email ILIKE :q)', {
-              q,
-            })
-            .orWhere(
-              '(cp IS NOT NULL AND u IS NOT NULL AND u.fullName ILIKE :q)',
-              { q },
-            )
+            .where('u.email ILIKE :q', { q })
+            .orWhere('u.fullName ILIKE :q', { q })
             .orWhere('CAST(d.id AS TEXT) ILIKE :q', { q });
         }),
       );
