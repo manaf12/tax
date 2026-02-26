@@ -23,6 +23,7 @@ export class Pricing {
 
   @OneToOne(() => TaxDeclaration, (declaration) => declaration.pricing, {
     nullable: true,
+    onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'declaration_id' })
   @Exclude()

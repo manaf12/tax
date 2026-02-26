@@ -58,7 +58,9 @@ __decorate([
     __metadata("design:type", Date)
 ], File.prototype, "createdAt", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => tax_declaration_entity_1.TaxDeclaration, (declaration) => declaration.files),
+    (0, typeorm_1.ManyToOne)(() => tax_declaration_entity_1.TaxDeclaration, (declaration) => declaration.files, {
+        onDelete: 'CASCADE',
+    }),
     __metadata("design:type", tax_declaration_entity_1.TaxDeclaration)
 ], File.prototype, "declaration", void 0);
 __decorate([

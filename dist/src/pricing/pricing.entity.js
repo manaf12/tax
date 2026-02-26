@@ -39,6 +39,7 @@ __decorate([
 __decorate([
     (0, typeorm_1.OneToOne)(() => tax_declaration_entity_1.TaxDeclaration, (declaration) => declaration.pricing, {
         nullable: true,
+        onDelete: 'CASCADE',
     }),
     (0, typeorm_1.JoinColumn)({ name: 'declaration_id' }),
     (0, class_transformer_1.Exclude)(),

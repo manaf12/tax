@@ -30,7 +30,9 @@ export class File {
   uploadedAt: Date;
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
-  @ManyToOne(() => TaxDeclaration, (declaration) => declaration.files)
+  @ManyToOne(() => TaxDeclaration, (declaration) => declaration.files, {
+    onDelete: 'CASCADE',
+  })
   declaration: TaxDeclaration;
   @Column({ type: 'jsonb', default: () => "'{}'" })
   meta: Record<string, any>;
