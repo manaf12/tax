@@ -594,11 +594,10 @@ export class OrdersService {
     const qb = this.declarationsRepository.createQueryBuilder('d');
 
     qb.leftJoinAndSelect('d.clientProfile', 'cp')
+      .leftJoinAndSelect('cp.user', 'u')
       .leftJoinAndSelect('d.pricing', 'p')
       .leftJoinAndSelect('d.files', 'f')
-      .leftJoinAndSelect('d.assignedAdmin', 'aa')
-      .leftJoin('users', 'u', 'u.id = cp."userId"') // ← join مباشر على الـ table
-      .addSelect(['u.id', 'u.email', 'u.fullName']);
+      .leftJoinAndSelect('d.assignedAdmin', 'aa');
 
     if (query.status)
       qb.andWhere('d.status = :status', { status: query.status });
