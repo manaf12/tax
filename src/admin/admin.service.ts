@@ -249,11 +249,11 @@ export class AdminService {
     const qb = this.taxDeclarationRepository.createQueryBuilder('d');
 
     qb.leftJoinAndSelect('d.clientProfile', 'cp')
-      .leftJoin('cp.user', 'u') // ← بدون Select
-      .addSelect(['u.id', 'u.email', 'u.fullName']) // ← بس اللي محتاجه
       .leftJoinAndSelect('d.pricing', 'p')
       .leftJoinAndSelect('d.files', 'f')
-      .leftJoinAndSelect('d.assignedAdmin', 'aa');
+      .leftJoinAndSelect('d.assignedAdmin', 'aa')
+      .leftJoin('users', 'u', 'u.id = cp."userId"') // ← join مباشر على الـ table
+      .addSelect(['u.id', 'u.email', 'u.fullName']);
 
     if (query.status)
       qb.andWhere('d.status = :status', { status: query.status });
