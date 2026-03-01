@@ -36,8 +36,8 @@ let MinioService = MinioService_1 = class MinioService {
         const endPoint = this.configService.get('MINIO_ENDPOINT');
         const portRaw = this.configService.get('MINIO_PORT');
         const useSSLRaw = this.configService.get('MINIO_USE_SSL');
-        const accessKey = this.configService.get('MINIO_ROOT_USER');
-        const secretKey = this.configService.get('MINIO_ROOT_PASSWORD');
+        const accessKey = this.configService.get('MINIO_ACCESS_KEY');
+        const secretKey = this.configService.get('MINIO_SECRET_KEY');
         if (!endPoint || !portRaw || !accessKey || !secretKey || !useSSLRaw) {
             throw new common_1.InternalServerErrorException('One or more required MinIO internal environment variables are missing.');
         }

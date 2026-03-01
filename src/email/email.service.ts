@@ -68,7 +68,7 @@ export class EmailService {
   }) {
     const { email, firstName, taxYear, taxablePerson, declarationId } = params;
 
-    const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+    const dashboardUrl = `${process.env.APP_URL}/declaration/${encodeURIComponent(declarationId)}`;
 
     const subject = 'Documents reçus — vérification en cours';
 
@@ -85,8 +85,9 @@ export class EmailService {
 
     <p>
       Suivre l’avancement :<br/>
-      <a href="${dashboardUrl}">${dashboardUrl}</a>
-    </p>
+<a href="${dashboardUrl}" style="display:inline-block;padding:10px 20px;background-color:#1a56db;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">
+  Voir mon tableau de bord
+</a>    </p>
 
     <p>
       Cordialement,<br/>
@@ -107,7 +108,7 @@ export class EmailService {
     const { email, declarationId, firstName, taxYear, taxablePerson, note } =
       params;
 
-    const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+    const dashboardUrl = `${process.env.APP_URL}/declaration/${encodeURIComponent(declarationId)}`;
 
     const safeNote =
       note && note.trim().length
@@ -129,8 +130,9 @@ export class EmailService {
 
     <p>
       Tableau de bord :<br/>
-      <a href="${dashboardUrl}">${dashboardUrl}</a>
-    </p>
+<a href="${dashboardUrl}" style="display:inline-block;padding:10px 20px;background-color:#1a56db;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">
+  Voir mon tableau de bord
+</a>    </p>
 
     ${safeNote}
 
@@ -161,7 +163,7 @@ export class EmailService {
       meetingAgendaUrl,
     } = params;
 
-    const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+    const dashboardUrl = `${process.env.APP_URL}/declaration/${encodeURIComponent(declarationId)}`;
 
     const subject = 'Votre déclaration est prête';
 
@@ -176,8 +178,9 @@ export class EmailService {
 
     <p>
       Vérifier et valider :
-      <a href="${dashboardUrl}">${dashboardUrl}</a>
-    </p>
+<a href="${dashboardUrl}" style="display:inline-block;padding:10px 20px;background-color:#1a56db;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">
+  Voir mon tableau de bord
+</a>    </p>
 
     <p>
       Afin de revoir votre déclaration d'impôt avec l'un de nos experts, prenez rendez-vous via le lien suivant:<br/>
@@ -207,7 +210,7 @@ export class EmailService {
   }) {
     const { email, declarationId, firstName, taxYear, taxablePerson } = params;
 
-    const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+    const dashboardUrl = `${process.env.APP_URL}/declaration/${encodeURIComponent(declarationId)}`;
 
     const subject = 'Déclaration soumise avec succès';
 
@@ -223,13 +226,15 @@ export class EmailService {
 
     <p>
       La quittance d’envoi ainsi que la déclaration d’impôt soumise sont disponibles sur Taxero.ch :<br/>
-      <a href="${dashboardUrl}">${dashboardUrl}</a>
-    </p>
+<a href="${dashboardUrl}" style="display:inline-block;padding:10px 20px;background-color:#1a56db;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">
+  Voir mon tableau de bord
+</a>    </p>
 
     <p>
       Dès réception de votre avis de taxation, vous pourrez le téléverser dans l’étape 5 de votre déclaration d’impôt :<br/>
-      <a href="${dashboardUrl}">${dashboardUrl}</a>
-    </p>
+<a href="${dashboardUrl}" style="display:inline-block;padding:10px 20px;background-color:#1a56db;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">
+  Voir mon tableau de bord
+</a>    </p>
 
     <p><b>Avez-vous apprécié notre service ?</b><br/>
       N’hésitez pas à nous recommander auprès de votre entourage et à bénéficier de notre programme de parrainage :
@@ -265,7 +270,7 @@ export class EmailService {
   }) {
     const { email, declarationId, firstName, taxYear, taxablePerson } = params;
 
-    const dashboardUrl = `${process.env.APP_URL}/dashboard/declarations/${encodeURIComponent(declarationId)}`;
+    const dashboardUrl = `${process.env.APP_URL}/declaration/${encodeURIComponent(declarationId)}`;
 
     const subject = 'Projet validé — soumission en cours';
 
@@ -282,8 +287,9 @@ export class EmailService {
 
     <p>
       Tableau de bord :<br/>
-      <a href="${dashboardUrl}">${dashboardUrl}</a>
-    </p>
+<a href="${dashboardUrl}" style="display:inline-block;padding:10px 20px;background-color:#1a56db;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">
+  Voir mon tableau de bord
+</a>    </p>
 
     <p>
       Cordialement,<br/>
@@ -337,6 +343,65 @@ export class EmailService {
   `;
 
     await this.sendMail(email, subject, html);
+  }
+  async sendNewCommentNotificationToAdmin(params: {
+    adminEmail: string;
+    clientFirstName?: string;
+    declarationId: string;
+    stepId: string;
+    commentText: string;
+  }) {
+    const { adminEmail, clientFirstName, declarationId, stepId, commentText } =
+      params;
+    const dashboardUrl = `${process.env.APP_URL}/declaration/${encodeURIComponent(declarationId)}`;
+
+    const subject = 'Nouveau message client — action requise';
+    const html = `
+    <p>Bonjour,</p>
+    <p>
+      Le client <b>${this.escapeHtml(clientFirstName ?? 'Inconnu')}</b> a laissé un nouveau message
+      sur l'étape <b>${this.escapeHtml(stepId)}</b> de sa déclaration.
+    </p>
+    <p><b>Message :</b><br/>${this.escapeHtml(commentText)}</p>
+    <p>
+      <a href="${dashboardUrl}" style="display:inline-block;padding:10px 20px;background-color:#1a56db;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">
+        Voir la déclaration
+      </a>
+    </p>
+    <p>Cordialement,<br/>L'équipe Taxero.ch</p>
+  `;
+
+    await this.sendMail(adminEmail, subject, html);
+  }
+
+  async sendNewCommentNotificationToClient(params: {
+    clientEmail: string;
+    clientFirstName?: string;
+    declarationId: string;
+    stepId: string;
+    commentText: string;
+  }) {
+    const { clientEmail, clientFirstName, declarationId, stepId, commentText } =
+      params;
+    const dashboardUrl = `${process.env.APP_URL}/declaration/${encodeURIComponent(declarationId)}`;
+
+    const subject = 'Nouveau message de votre conseiller Taxero';
+    const html = `
+    <p>Bonjour${clientFirstName ? ` ${this.escapeHtml(clientFirstName)}` : ''},</p>
+    <p>
+      Votre conseiller a laissé un nouveau message sur votre déclaration,
+      à l'étape <b>${this.escapeHtml(stepId)}</b>.
+    </p>
+    <p><b>Message :</b><br/>${this.escapeHtml(commentText)}</p>
+    <p>
+      <a href="${dashboardUrl}" style="display:inline-block;padding:10px 20px;background-color:#1a56db;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;">
+        Voir mon tableau de bord
+      </a>
+    </p>
+    <p>Cordialement,<br/>L'équipe Taxero.ch</p>
+  `;
+
+    await this.sendMail(clientEmail, subject, html);
   }
   private escapeHtml(input: string) {
     return input

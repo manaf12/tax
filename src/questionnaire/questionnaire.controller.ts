@@ -131,4 +131,12 @@ export class QuestionnaireController {
     if (!resp) throw new NotFoundException('Questionnaire not found');
     return resp;
   }
+  @Post(':questionnaireId/claim-standalone')
+  @UseGuards(JwtAuthGuard)
+  async claimStandalone(
+    @Param('questionnaireId') questionnaireId: string,
+    @User('sub') userId: string,
+  ) {
+    return this.questionnaireService.claimStandalone(questionnaireId, userId);
+  }
 }

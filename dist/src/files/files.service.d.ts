@@ -35,4 +35,5 @@ export declare class FilesService {
     private ensureStep1Started;
     private ensureStep1Editable;
     private sanitizeStep1Answers;
+    isDeclarationMarried(declarationId: string): Promise<boolean>;
 }

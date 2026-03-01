@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { User, UserRole } from './user.entity';
 import { ClientProfile } from './client-profile.entity';
-import { In, Repository } from 'typeorm';
+import { ArrayContains, In, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 
 interface ProfileData {
@@ -27,7 +29,12 @@ export class UsersService {
   async findOneById(id: string): Promise<User | null> {
     return this.usersRepository.findOne({ where: { id } });
   }
-
+  async findByRole(role: UserRole): Promise<User[]> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return this.usersRepository.find({
+      where: { roles: ArrayContains([role]) },
+    });
+  }
   async findOneWithProfile(id: string): Promise<User | null> {
     return this.usersRepository.findOne({
       where: { id },

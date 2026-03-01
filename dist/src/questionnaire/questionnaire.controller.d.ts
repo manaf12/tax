@@ -23,4 +23,5 @@ export declare class QuestionnaireController {
         token: string;
     }>;
     getQuestionnaire(questionnaireId: string): Promise<QuestionnaireResponse>;
+    claimStandalone(questionnaireId: string, userId: string): Promise<QuestionnaireResponse>;
 }

@@ -31,6 +31,11 @@ let UsersService = class UsersService {
     async findOneById(id) {
         return this.usersRepository.findOne({ where: { id } });
     }
+    async findByRole(role) {
+        return this.usersRepository.find({
+            where: { roles: (0, typeorm_1.ArrayContains)([role]) },
+        });
+    }
     async findOneWithProfile(id) {
         return this.usersRepository.findOne({
             where: { id },

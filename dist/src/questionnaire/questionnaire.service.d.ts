@@ -37,4 +37,5 @@ export declare class QuestionnaireService {
         declaration: TaxDeclaration;
         token: string;
     }>;
+    claimStandalone(questionnaireId: string, userId: string): Promise<QuestionnaireResponse>;
 }

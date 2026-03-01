@@ -14,6 +14,7 @@ export declare class UsersService {
     constructor(usersRepository: Repository<User>, clientProfileRepository: Repository<ClientProfile>);
     findOneByEmail(email: string): Promise<User | null>;
     findOneById(id: string): Promise<User | null>;
+    findByRole(role: UserRole): Promise<User[]>;
     findOneWithProfile(id: string): Promise<User | null>;
     findByIds(ids: string[]): Promise<User[]>;
     createUser(email: string, passwordHash: string, profileData: ProfileData): Promise<User>;

@@ -284,6 +284,25 @@ let QuestionnaireService = class QuestionnaireService {
         }
         return { declaration: savedDecl, token };
     }
+    async claimStandalone(questionnaireId, userId) {
+        const response = await this.responseRepository.findOne({
+            where: { id: questionnaireId },
+            relations: ['clientProfile'],
+        });
+        if (!response)
+            throw new common_1.NotFoundException('Questionnaire not found.');
+        if (response.clientProfile) {
+            const profile = response.clientProfile;
+            if (profile.user?.id && profile.user.id !== userId) {
+                throw new common_1.ForbiddenException('Questionnaire belongs to another user.');
+            }
+            return response;
+        }
+        const clientProfile = await this.usersService.getOrCreateClientProfile(userId);
+        response.clientProfile = clientProfile;
+        response.status = 'IN_PROGRESS';
+        return this.responseRepository.save(response);
+    }
 };
 exports.QuestionnaireService = QuestionnaireService;
 exports.QuestionnaireService = QuestionnaireService = __decorate([

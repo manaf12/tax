@@ -22,12 +22,15 @@ const update_step_dto_1 = require("./dto/update-step.dto");
 const user_entity_1 = require("../users/user.entity");
 const add_step_comment_dto_1 = require("./dto/add-step-comment.dto");
 const users_service_1 = require("../users/users.service");
+const email_service_1 = require("../email/email.service");
 let OrdersController = class OrdersController {
     ordersService;
     userService;
-    constructor(ordersService, userService) {
+    emailService;
+    constructor(ordersService, userService, emailService) {
         this.ordersService = ordersService;
         this.userService = userService;
+        this.emailService = emailService;
     }
     async createDraft(req) {
         return this.ordersService.findOrCreateDraft(req.user.sub);
@@ -57,7 +60,7 @@ let OrdersController = class OrdersController {
         return this.ordersService.confirmDownloadByUser(declarationId, stepId, userId, body.fileId);
     }
     async addStepComment(declarationId, stepId, body, req, userId) {
-        const declaration = await this.ordersService.findDeclarationById(declarationId, ['clientProfile']);
+        const declaration = await this.ordersService.findDeclarationById(declarationId, ['clientProfile', 'clientProfile.user', 'clientProfile.user.profile']);
         if (!declaration)
             throw new common_1.NotFoundException('Declaration not found');
         const roles = req.user?.roles ?? [];
@@ -93,6 +96,38 @@ let OrdersController = class OrdersController {
             byEmail: userMap[c.by]?.email ?? 'Unknown',
             byName: userMap[c.by]?.name ?? null,
         }));
+        try {
+            if (isStaff) {
+                const clientUser = declaration.clientProfile?.user;
+                if (clientUser?.email) {
+                    await this.emailService.sendNewCommentNotificationToClient({
+                        clientEmail: clientUser.email,
+                        clientFirstName: clientUser.profile?.firstName,
+                        declarationId,
+                        stepId,
+                        commentText: body.comment,
+                    });
+                }
+            }
+            else {
+                const [admins, superAdmins] = await Promise.all([
+                    this.userService.findByRole(user_entity_1.UserRole.ADMIN),
+                    this.userService.findByRole(user_entity_1.UserRole.SUPER_ADMIN),
+                ]);
+                const staffToNotify = [...admins, ...superAdmins];
+                const clientFirstName = declaration.clientProfile?.user?.profile?.firstName;
+                await Promise.all(staffToNotify.map((admin) => this.emailService.sendNewCommentNotificationToAdmin({
+                    adminEmail: admin.email,
+                    clientFirstName,
+                    declarationId,
+                    stepId,
+                    commentText: body.comment,
+                })));
+            }
+        }
+        catch (err) {
+            console.error('Failed to send comment notification email', err);
+        }
         return {
             ok: true,
             meta: {
@@ -180,6 +215,7 @@ exports.OrdersController = OrdersController = __decorate([
     (0, common_1.Controller)('orders'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [order_service_1.OrdersService,
-        users_service_1.UsersService])
+        users_service_1.UsersService,
+        email_service_1.EmailService])
 ], OrdersController);
 //# sourceMappingURL=orders.controller.js.map

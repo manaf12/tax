@@ -49,5 +49,19 @@ export declare class EmailService {
         firstName?: string;
         tokenComposite: string;
     }): Promise<void>;
+    sendNewCommentNotificationToAdmin(params: {
+        adminEmail: string;
+        clientFirstName?: string;
+        declarationId: string;
+        stepId: string;
+        commentText: string;
+    }): Promise<void>;
+    sendNewCommentNotificationToClient(params: {
+        clientEmail: string;
+        clientFirstName?: string;
+        declarationId: string;
+        stepId: string;
+        commentText: string;
+    }): Promise<void>;
     private escapeHtml;
 }

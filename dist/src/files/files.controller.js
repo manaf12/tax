@@ -95,7 +95,11 @@ let FilesController = class FilesController {
     }
     async getStep1Questions(declarationId, userId, roles = []) {
         await this.filesService.getStep1Answers(userId, roles, declarationId);
-        return { questions: step1_questions_1.STEP1_QUESTIONS };
+        const isMarried = await this.filesService.isDeclarationMarried(declarationId);
+        const questions = isMarried
+            ? step1_questions_1.STEP1_QUESTIONS
+            : step1_questions_1.STEP1_QUESTIONS.filter((q) => !q.spouseQuestion);
+        return { questions };
     }
     async getStep1Answers(declarationId, userId, roles = []) {
         const answers = await this.filesService.getStep1Answers(userId, roles, declarationId);

@@ -4,10 +4,12 @@ import { TaxDeclaration } from './tax-declaration.entity';
 import { UpdateStepDto } from './dto/update-step.dto';
 import { AddStepCommentDto } from './dto/add-step-comment.dto';
 import { UsersService } from 'src/users/users.service';
+import { EmailService } from 'src/email/email.service';
 export declare class OrdersController {
     private readonly ordersService;
     private readonly userService;
-    constructor(ordersService: OrdersService, userService: UsersService);
+    private readonly emailService;
+    constructor(ordersService: OrdersService, userService: UsersService, emailService: EmailService);
     createDraft(req: {
         user: UserPayload;
     }): Promise<TaxDeclaration>;

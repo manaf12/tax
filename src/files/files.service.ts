@@ -185,6 +185,7 @@ export class FilesService {
     files: MulterFile[],
     documentType: string,
   ): Promise<{ saved: File[]; failed: { fileName: string; reason: any }[] }> {
+    // Check once, not per file
     await this.ensureStep1Editable(declarationId, false);
     await this.reopenStep1IfConfirmed(declarationId, userId);
     await this.ensureStep1Started(declarationId, userId);
@@ -196,9 +197,25 @@ export class FilesService {
     for (let i = 0; i < files.length; i += concurrency) {
       const batch = files.slice(i, i + concurrency);
       const results = await Promise.allSettled(
-        batch.map((file) =>
-          this.uploadFile(userId, declarationId, file, documentType),
-        ),
+        batch.map(async (file) => {
+          const storagePath = await this.saveFileToStorage(file);
+          const declaration =
+            await this.ordersService.findDeclarationById(declarationId);
+
+          const fileEntity = this.filesRepository.create({
+            originalName: file.originalname,
+            storagePath,
+            mimetype: file.mimetype,
+            size: file.size,
+            declaration,
+            documentType,
+            meta: {
+              uploadedBy: userId,
+              uploaderRole: 'user',
+            },
+          });
+          return this.filesRepository.save(fileEntity);
+        }),
       );
 
       results.forEach((r, idx) => {
@@ -208,25 +225,29 @@ export class FilesService {
       });
     }
 
-    try {
-      const decl = await this.ordersService.findDeclarationById(declarationId);
-      const existingStep = decl.steps?.find(
-        (s) => s.id === 'documentsPreparation',
-      );
-      const existingFileIds: string[] = existingStep?.meta?.files ?? [];
+    // Update step metadata once after all uploads
+    if (savedFiles.length > 0) {
+      try {
+        const decl =
+          await this.ordersService.findDeclarationById(declarationId);
+        const existingStep = decl.steps?.find(
+          (s) => s.id === 'documentsPreparation',
+        );
+        const existingFileIds: string[] = existingStep?.meta?.files ?? [];
 
-      await this.ordersService.updateStep(
-        declarationId,
-        'documentsPreparation',
-        existingStep?.status ?? StepStatus.IN_PROGRESS, // keep current
-        userId,
-        { files: [...existingFileIds, ...savedFiles.map((f) => f.id)] },
-      );
-    } catch (err) {
-      console.error(
-        'Failed to update step metadata after multiple uploads',
-        err,
-      );
+        await this.ordersService.updateStep(
+          declarationId,
+          'documentsPreparation',
+          existingStep?.status ?? StepStatus.IN_PROGRESS,
+          userId,
+          { files: [...existingFileIds, ...savedFiles.map((f) => f.id)] },
+        );
+      } catch (err) {
+        console.error(
+          'Failed to update step metadata after multiple uploads',
+          err,
+        );
+      }
     }
 
     return { saved: savedFiles, failed };
@@ -555,5 +576,13 @@ export class FilesService {
     }
 
     return out;
+  }
+  async isDeclarationMarried(declarationId: string): Promise<boolean> {
+    const declaration = await this.ordersService.findDeclarationById(
+      declarationId,
+      ['clientProfile'],
+    );
+    const maritalStatus = declaration.questionnaireSnapshot?.maritalStatus;
+    return maritalStatus === 'married';
   }
 }

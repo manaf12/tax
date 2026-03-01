@@ -159,9 +159,17 @@ export class FilesController {
     @User('sub') userId: string,
     @User('roles') roles: string[] = [],
   ) {
-    // Optional: enforce same access as answers (usually fine to allow for owner/admin only)
     await this.filesService.getStep1Answers(userId, roles, declarationId);
-    return { questions: STEP1_QUESTIONS };
+
+    // Get marital status from the declaration snapshot
+    const isMarried =
+      await this.filesService.isDeclarationMarried(declarationId);
+
+    const questions = isMarried
+      ? STEP1_QUESTIONS // all questions including spouse
+      : STEP1_QUESTIONS.filter((q) => !q.spouseQuestion); // no spouse questions
+
+    return { questions };
   }
   @Get(':declarationId/step1/answers')
   async getStep1Answers(

@@ -380,4 +380,34 @@ export class QuestionnaireService {
 
     return { declaration: savedDecl, token };
   }
+  async claimStandalone(
+    questionnaireId: string,
+    userId: string,
+  ): Promise<QuestionnaireResponse> {
+    const response = await this.responseRepository.findOne({
+      where: { id: questionnaireId },
+      relations: ['clientProfile'],
+    });
+
+    if (!response) throw new NotFoundException('Questionnaire not found.');
+
+    // Already claimed by someone else
+    if (response.clientProfile) {
+      const profile = response.clientProfile as ClientProfile & {
+        user?: { id: string };
+      };
+      if (profile.user?.id && profile.user.id !== userId) {
+        throw new ForbiddenException('Questionnaire belongs to another user.');
+      }
+      // Already claimed by same user — just return it
+      return response;
+    }
+
+    const clientProfile =
+      await this.usersService.getOrCreateClientProfile(userId);
+    response.clientProfile = clientProfile;
+    response.status = 'IN_PROGRESS';
+
+    return this.responseRepository.save(response);
+  }
 }

@@ -26,6 +26,7 @@ import { UpdateStepDto } from './dto/update-step.dto';
 import { UserRole } from 'src/users/user.entity';
 import { AddStepCommentDto } from './dto/add-step-comment.dto';
 import { UsersService } from 'src/users/users.service';
+import { EmailService } from 'src/email/email.service';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -33,6 +34,7 @@ export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly userService: UsersService,
+    private readonly emailService: EmailService,
   ) {}
 
   @Post('draft')
@@ -121,7 +123,7 @@ export class OrdersController {
   ) {
     const declaration = await this.ordersService.findDeclarationById(
       declarationId,
-      ['clientProfile'],
+      ['clientProfile', 'clientProfile.user', 'clientProfile.user.profile'],
     );
     if (!declaration) throw new NotFoundException('Declaration not found');
 
@@ -134,6 +136,7 @@ export class OrdersController {
         'Not allowed to comment on this declaration',
       );
     }
+
     const steps: any[] = Array.isArray(declaration.steps)
       ? declaration.steps
       : [];
@@ -155,24 +158,64 @@ export class OrdersController {
 
     await this.ordersService.saveDeclaration(declarationId, { steps });
 
+    // ── Enrich history for response ──────────────────────────────────────────
     const authorIds: string[] = Array.from(
-      new Set(newMeta.commentHistory.map((c) => c.by)),
+      new Set(newMeta.commentHistory.map((c: any) => c.by)),
     );
-
     const users = await this.userService.findByIds(authorIds);
-
     const userMap = Object.fromEntries(
       users.map((u) => [
         u.id,
         { email: u.email, name: u.profile?.firstName ?? '' },
       ]),
     );
-
-    const enrichedHistory = newMeta.commentHistory.map((c) => ({
+    const enrichedHistory = newMeta.commentHistory.map((c: any) => ({
       ...c,
       byEmail: userMap[c.by]?.email ?? 'Unknown',
       byName: userMap[c.by]?.name ?? null,
     }));
+
+    // ── Email notifications ──────────────────────────────────────────────────
+    try {
+      if (isStaff) {
+        // Admin commented → notify the client
+        const clientUser = declaration.clientProfile?.user;
+        if (clientUser?.email) {
+          await this.emailService.sendNewCommentNotificationToClient({
+            clientEmail: clientUser.email,
+            clientFirstName: clientUser.profile?.firstName,
+            declarationId,
+            stepId,
+            commentText: body.comment,
+          });
+        }
+      } else {
+        // Client commented → notify all admins + super admins
+        const [admins, superAdmins] = await Promise.all([
+          this.userService.findByRole(UserRole.ADMIN),
+          this.userService.findByRole(UserRole.SUPER_ADMIN),
+        ]);
+
+        const staffToNotify = [...admins, ...superAdmins];
+        const clientFirstName =
+          declaration.clientProfile?.user?.profile?.firstName;
+
+        await Promise.all(
+          staffToNotify.map((admin) =>
+            this.emailService.sendNewCommentNotificationToAdmin({
+              adminEmail: admin.email,
+              clientFirstName,
+              declarationId,
+              stepId,
+              commentText: body.comment,
+            }),
+          ),
+        );
+      }
+    } catch (err) {
+      console.error('Failed to send comment notification email', err);
+    }
+
     return {
       ok: true,
       meta: {

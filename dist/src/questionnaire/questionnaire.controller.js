@@ -70,6 +70,9 @@ let QuestionnaireController = class QuestionnaireController {
             throw new common_1.NotFoundException('Questionnaire not found');
         return resp;
     }
+    async claimStandalone(questionnaireId, userId) {
+        return this.questionnaireService.claimStandalone(questionnaireId, userId);
+    }
 };
 exports.QuestionnaireController = QuestionnaireController;
 __decorate([
@@ -146,6 +149,15 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], QuestionnaireController.prototype, "getQuestionnaire", null);
+__decorate([
+    (0, common_1.Post)(':questionnaireId/claim-standalone'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Param)('questionnaireId')),
+    __param(1, (0, user_decorator_1.User)('sub')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], QuestionnaireController.prototype, "claimStandalone", null);
 exports.QuestionnaireController = QuestionnaireController = __decorate([
     (0, common_1.Controller)('questionnaire'),
     __metadata("design:paramtypes", [questionnaire_service_1.QuestionnaireService])

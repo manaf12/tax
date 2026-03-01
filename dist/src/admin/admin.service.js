@@ -150,7 +150,7 @@ let AdminService = class AdminService {
     }
     async listDeclarations(query) {
         const page = query.page ?? 1;
-        const perPage = Math.min(query.perPage ?? 20, 100);
+        const perPage = Math.min(query.perPage ?? 1000, 5000);
         const qb = this.taxDeclarationRepository.createQueryBuilder('d');
         qb.leftJoinAndSelect('d.clientProfile', 'cp')
             .leftJoinAndSelect('cp.user', 'u')
@@ -164,7 +164,13 @@ let AdminService = class AdminService {
         if (query.assignedAdminId)
             qb.andWhere('d.assignedAdminId = :aid', { aid: query.assignedAdminId });
         if (query.search) {
-            qb.andWhere('(u.email ILIKE :q OR u.fullName ILIKE :q OR d.id ILIKE :q)', { q: `%${query.search}%` });
+            const q = `%${query.search}%`;
+            qb.andWhere(new typeorm_2.Brackets((sqb) => {
+                sqb
+                    .where('u.email ILIKE :q', { q })
+                    .orWhere('u.fullName ILIKE :q', { q })
+                    .orWhere('CAST(d.id AS TEXT) ILIKE :q', { q });
+            }));
         }
         qb.orderBy('d.createdAt', 'DESC')
             .skip((page - 1) * perPage)
