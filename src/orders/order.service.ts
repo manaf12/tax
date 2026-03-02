@@ -742,8 +742,13 @@ export class OrdersService {
       });
       // .catch((e) => this.logger.error(`Step1 email failed for ${email}`, e));
     }
-
-    return { ok: true };
+    const updated = await this.findDeclarationById(declarationId, [
+      'clientProfile',
+      'clientProfile.user',
+      'files',
+      'pricing',
+    ]);
+    return { ok: true, declaration: updated };
   }
   async deleteDeclarationAsAdmin(declarationId: string, adminUser: User) {
     const declaration = await this.declarationsRepository.findOne({
