@@ -26,6 +26,7 @@ import { AdminModule } from './admin/admin.module';
 import { MinioModule } from './minio/minio.module';
 import { QrBillModule } from './qr/qr-bill.module';
 import { ClamAVModule } from './clamav/clamav.module';
+import { SettingsModule } from './settings/settings.module';
 import { join } from 'path';
 dotenv.config();
 import * as fs from 'fs';
@@ -82,6 +83,7 @@ const watchI18n = fs.existsSync(srcI18n);
     MinioModule,
     ClamAVModule,
     QrBillModule,
+    SettingsModule,
   ],
 })
 export class AppModule {}
