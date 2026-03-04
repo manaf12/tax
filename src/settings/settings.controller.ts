@@ -26,7 +26,7 @@ export class SettingsController {
    */
   @Get('profile')
   getProfile(@Request() req: any) {
-    return this.settingsService.getProfile(req.user.id);
+    return this.settingsService.getProfile(req.user.sub);
   }
 
   /**
@@ -35,7 +35,7 @@ export class SettingsController {
    */
   @Patch('personal-info')
   updatePersonalInfo(@Request() req: any, @Body() dto: UpdatePersonalInfoDto) {
-    return this.settingsService.updatePersonalInfo(req.user.id, dto);
+    return this.settingsService.updatePersonalInfo(req.user.sub, dto);
   }
 
   /**
@@ -45,7 +45,7 @@ export class SettingsController {
   @Patch('password')
   @HttpCode(HttpStatus.OK)
   changePassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
-    return this.settingsService.changePassword(req.user.id, dto);
+    return this.settingsService.changePassword(req.user.sub, dto);
   }
 
   /**
@@ -54,7 +54,7 @@ export class SettingsController {
    */
   @Patch('language')
   updateLanguage(@Request() req: any, @Body() dto: UpdateLanguageDto) {
-    return this.settingsService.updateLanguage(req.user.id, dto);
+    return this.settingsService.updateLanguage(req.user.sub, dto);
   }
 
   /**
@@ -64,6 +64,6 @@ export class SettingsController {
   @Delete('account')
   @HttpCode(HttpStatus.OK)
   deleteAccount(@Request() req: any) {
-    return this.settingsService.deleteAccount(req.user.id);
+    return this.settingsService.deleteAccount(req.user.sub);
   }
 }
