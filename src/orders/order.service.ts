@@ -416,8 +416,14 @@ export class OrdersService {
       stepId === 'documentsPreparation' &&
       steps[idx].status === StepStatus.DONE
     ) {
-      // Do not change status if it is already DONE
-      return decl; // Return the declaration as is if it's already DONE
+      // Still fix currentStep in case it's stuck
+      const firstNotDone = steps.find((s) => s.status !== StepStatus.DONE);
+      const correctStep = firstNotDone ? firstNotDone.order : steps.length;
+      if (decl.currentStep !== correctStep) {
+        decl.currentStep = correctStep;
+        return this.declarationsRepository.save(decl);
+      }
+      return decl;
     }
 
     steps[idx] = {
