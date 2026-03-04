@@ -11,6 +11,8 @@ import { ClientProfile } from '../users/client-profile.entity';
 import { UpdatePersonalInfoDto } from './update-personal-info.dto';
 import { ChangePasswordDto } from './change-password.dto';
 import { UpdateLanguageDto } from './update-language.dto';
+import { PasswordResetToken } from 'src/auth/password-reset-token.entity';
+import { RefreshToken } from 'src/auth/refresh-token.entity';
 
 @Injectable()
 export class SettingsService {
@@ -19,6 +21,10 @@ export class SettingsService {
     private usersRepository: Repository<User>,
     @InjectRepository(ClientProfile)
     private clientProfileRepository: Repository<ClientProfile>,
+    @InjectRepository(RefreshToken)
+    private refreshTokenRepository: Repository<RefreshToken>,
+    @InjectRepository(PasswordResetToken)
+    private passwordResetTokenRepository: Repository<PasswordResetToken>,
   ) {}
 
   async getProfile(userId: string): Promise<{
@@ -103,18 +109,24 @@ export class SettingsService {
 
     return { message: 'Language preference updated successfully' };
   }
-
   async deleteAccount(userId: string): Promise<{ message: string }> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
-      relations: ['profile'],
+      relations: ['profile', 'refreshTokens', 'passwordResetTokens'],
     });
     if (!user) throw new NotFoundException('User not found');
 
-    // Hard delete: removes profile first (due to FK), then the user
+    // Remove related records first to avoid FK constraint violations
     if (user.profile) {
       await this.clientProfileRepository.remove(user.profile);
     }
+    if (user.refreshTokens?.length) {
+      await this.refreshTokenRepository.remove(user.refreshTokens);
+    }
+    if (user.passwordResetTokens?.length) {
+      await this.passwordResetTokenRepository.remove(user.passwordResetTokens);
+    }
+
     await this.usersRepository.remove(user);
 
     return { message: 'Account permanently deleted.' };
