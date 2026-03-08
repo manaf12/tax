@@ -113,11 +113,11 @@ export class PricingService {
     if (normalized.isMarried) variablePrice += 30;
     variablePrice += normalized.numKids * 10;
     variablePrice += normalized.numIncomeSources * 10;
-    variablePrice += normalized.numSecurities * 10;
+    variablePrice += normalized.numSecurities * 5;
     variablePrice += normalized.numRealEstate * 80;
     variablePrice += normalized.firstTimeDeclaredCount * 60;
 
-    const standardPrice = variablePrice - 1;
+    const standardPrice = Math.min(variablePrice - 1, 800);
     const premiumPrice = standardPrice + 120 - 1;
     const confortPrice = premiumPrice * 2 - 1;
 
