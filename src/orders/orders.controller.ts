@@ -123,7 +123,12 @@ export class OrdersController {
   ) {
     const declaration = await this.ordersService.findDeclarationById(
       declarationId,
-      ['clientProfile', 'clientProfile.user', 'clientProfile.user.profile'],
+      [
+        'clientProfile',
+        'clientProfile.user',
+        'clientProfile.user.profile',
+        'assignedAdmin', // ← added
+      ],
     );
     if (!declaration) throw new NotFoundException('Declaration not found');
 
@@ -190,27 +195,19 @@ export class OrdersController {
           });
         }
       } else {
-        // Client commented → notify all admins + super admins
-        const [admins, superAdmins] = await Promise.all([
-          this.userService.findByRole(UserRole.ADMIN),
-          this.userService.findByRole(UserRole.SUPER_ADMIN),
-        ]);
-
-        const staffToNotify = [...admins, ...superAdmins];
+        // Client commented → notify assigned admin only ← changed
         const clientFirstName =
           declaration.clientProfile?.user?.profile?.firstName;
 
-        await Promise.all(
-          staffToNotify.map((admin) =>
-            this.emailService.sendNewCommentNotificationToAdmin({
-              adminEmail: admin.email,
-              clientFirstName,
-              declarationId,
-              stepId,
-              commentText: body.comment,
-            }),
-          ),
-        );
+        if (declaration.assignedAdmin?.email) {
+          await this.emailService.sendNewCommentNotificationToAdmin({
+            adminEmail: declaration.assignedAdmin.email,
+            clientFirstName,
+            declarationId,
+            stepId,
+            commentText: body.comment,
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to send comment notification email', err);
